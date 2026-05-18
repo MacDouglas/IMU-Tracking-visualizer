@@ -1,73 +1,531 @@
-# React + TypeScript + Vite
+# IMU — Справочник графиков и алгоритмов обработки
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Охватывает все версии аналитики: v2 (базовые ориентационные графики), v3 (тремор-аналитика), v4 (DTW-сравнение двух записей). Итого 19 графиков.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 1. Формат входного файла
 
-## React Compiler
+**Устройство:** WitMotion WT9011DCL-BT50 (9-DOF IMU, BT 5.0)  
+**Частота:** 100 Hz, Bandwidth 20 Hz  
+**Формат:** TSV, 27 колонок, разделитель — табуляция
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+| Колонка | Единицы | Назначение |
+|---------|---------|------------|
+| time | `2026-3-25 0:12:55.983` | Абсолютная метка времени |
+| DeviceName | строка | Имя устройства |
+| AccX, AccY, AccZ | g | Линейное ускорение (включает гравитацию) |
+| AsX, AsY, AsZ | °/с | Угловая скорость (гироскоп) |
+| AngleX | ° | Roll — поворот ладонью вверх/вниз |
+| AngleY | ° | Pitch — наклон пальцами вверх/вниз |
+| AngleZ | ° | Yaw — поворот влево/вправо (скачки ±180°) |
+| HX, HY, HZ | мкТл | Магнетометр |
+| TrajectoryX/Y/Z | мм | Прошивочная позиция (только в Displacement mode) |
+| SpeedX/Y/Z | мм/с | Прошивочная скорость |
+| Q0, Q1, Q2, Q3 | б/р | Кватернион ориентации (sensor fusion прошивки) |
+| Temperature | °С | Температура чипа |
+| Version | — | Версия прошивки |
+| Battery level | % | Заряд батареи |
 
-## Expanding the ESLint configuration
+### Особенности BLE-батчинга
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+Bluetooth передаёт 4 семпла с одним общим таймстемпом. ~68% строк имеют `dt = 0`. При обработке: если `dt = 0`, принять `dt = 0.01 с` (1/100 Hz).
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+---
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## 2. Общий пайплайн предобработки (все версии)
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```
+1. Разбить TSV по табуляции → массив строк/столбцов
+2. Временные метки: "2026-3-25 0:12:55.983" → относительные секунды от первой строки
+3. BLE-батчинг: если dt = 0 → заменить на 0.01
+4. Числовые колонки: строка → float, "null" → NaN
+5. Даунсемплинг: взять каждый N-й семпл → ~100–150 точек (только для визуализации)
+   Исключение: FFT и тремор-пайплайн работают на полных данных (100 Hz)
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### Какие колонки нужны каждой версии
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+| Версия | Колонки |
+|--------|---------|
+| V2 (ориентация) | time, AngleX, AngleY, AsX, AsY, AsZ, AccX, AccY, Q0, Q1, Q2, Q3 |
+| V3 (тремор) | time, AsX |
+| V4 (DTW) | time, AngleX, AngleY, Q0, Q1, Q2, Q3 |
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+---
+
+## 3. V2 — Базовые ориентационные графики
+
+### v2_1: 3D Orientation Model (цифровой двойник руки)
+
+**Компонент:** `OrientationModel/`  
+**Входные колонки:** Q0, Q1, Q2, Q3  
+**Обработка:**
+1. Кватернион (q0, q1, q2, q3) → матрица вращения 3×3:
+   ```
+   R = [
+     [1-2(q2²+q3²),   2(q1q2-q0q3),   2(q1q3+q0q2)],
+     [2(q1q2+q0q3),   1-2(q1²+q3²),   2(q2q3-q0q1)],
+     [2(q1q3-q0q2),   2(q2q3+q0q1),   1-2(q1²+q2²)]
+   ]
+   ```
+2. Умножить вершины модели руки на R
+3. Перспективная проекция → 2D координаты экрана
+4. Painter's algorithm: сортировка граней по z-глубине для корректного отображения
+
+**Визуализация:** Three.js — анимированная 3D-модель, вращается в реальном времени за кватернионами из файла  
+**Что показывает:** цифровой двойник ориентации запястья. Ни позиции, ни скорости — только ориентация
+
+---
+
+### v2_2: 3D Tip Trail (след кончика датчика)
+
+**Компонент:** `TipTrail3D/`  
+**Входные колонки:** Q0, Q1, Q2, Q3  
+**Обработка:**  
+Для каждого семпла поворачивать вектор `[0, 0, 1.8]` матрицей вращения из кватерниона. Результат — позиция «кончика»:
 ```
+tipX = 2 × (q1×q3 + q0×q2) × 1.8
+tipY = 2 × (q2×q3 − q0×q1) × 1.8
+tipZ = (1 − 2×(q1² + q2²)) × 1.8    (реальная Z)
+```
+Все точки вычисляются при загрузке файла (precompute).
+
+**Визуализация:** Three.js — ломаная линия в 3D с градиентом цвета зелёный→фиолетовый (начало→конец по времени). Камера управляется слайдером  
+**Что показывает:** пространственную траекторию кончика, всё движение собрано в один «клубок»
+
+---
+
+### v2_3: 3D Tip Trail + Time Axis (след, развёрнутый по времени)
+
+**Компонент:** `TipTrail3D/` (вариант с осью времени)  
+**Входные колонки:** Q0, Q1, Q2, Q3, time  
+**Обработка:**  
+Те же tipX и tipY, что в v2_2, но вместо реального tipZ используется нормализованное время:
+```
+z = (t / tMax) × 3 − 1.5    → диапазон [-1.5, +1.5]
+```
+Это «разворачивает» замкнутые петли в спираль вдоль оси времени.
+
+**Визуализация:** Three.js — основная 3D-линия + тень на полу `(tipX, y=−2, z_time)` + вертикальные соединители каждые 6 точек  
+**Что показывает:** как траектория изменялась со временем. Повторяющиеся движения видны как периодические витки спирали
+
+---
+
+### v2_4: 3D Angle Ribbon (ленты Roll и Pitch по времени)
+
+**Компонент:** `panels/` (3D ribbon)  
+**Входные колонки:** AngleX (Roll), AngleY (Pitch), time  
+**Обработка:**  
+Нормализация для 3D-сцены:
+```
+Roll_norm  = AngleX / 110 × 2
+Pitch_norm = AngleY / 80 × 2
+z_time     = (t / tMax) × 3 − 1.5
+```
+Три объекта:
+- Красная лента: вертикальная плоскость `(0, Roll_norm, z_time)`
+- Зелёная лента: горизонтальная плоскость `(Pitch_norm, 0, z_time)`
+- Фиолетовая линия: комбинированная `(Pitch_norm, Roll_norm, z_time)`
+
+**Визуализация:** Three.js  
+**Что показывает:** форму движения по каждому углу во времени. Симметрия ленты = равномерные движения. Выбросы = резкие манёвры
+
+---
+
+### v2_5: Euler Angles Timeline (углы Эйлера по времени)
+
+**Компонент:** `AngleTimeline/`  
+**Входные колонки:** AngleX (Roll), AngleY (Pitch), time  
+**Обработка:** нет — данные как есть  
+**Визуализация:** Recharts LineChart, ось X = секунды, ось Y = градусы. Две линии: Roll и Pitch  
+**Что показывает:** хронологию каждого угла. Самый простой и читаемый граф. Caution: AngleZ (Yaw) скачет на границе ±180°
+
+---
+
+### v2_6: Motion Intensity Profile (профиль интенсивности движения)
+
+**Компонент:** `IntensityProfile/`  
+**Входные колонки:** AsX, AsY, AsZ, AccX, AccY, time  
+**Обработка:**
+```
+Gyro magnitude    = √(AsX² + AsY² + AsZ²)          — суммарная угловая скорость
+Horizontal acc    = √(AccX² + AccY²)                — горизонтальное ускорение (без гравитации)
+Acc scaled        = Horizontal acc × 100            — масштаб для пропорциональности с гиро
+```
+
+**Визуализация:** Recharts LineChart, два ряда на одних осях  
+**Что показывает:** «когда рука двигалась». Пики гиро = быстрые вращения. Пики acc = ударные движения. Плоские участки = паузы
+
+---
+
+### v2_7: Orientation Trajectory — Roll vs Pitch (фазовый портрет ориентации)
+
+**Компонент:** `OrientationMap/`  
+**Входные колонки:** AngleX (Roll), AngleY (Pitch)  
+**Обработка:**  
+Цвет точки кодирует время: `f = i / (N−1)`, линейная интерполяция RGB от зелёного (0,255,0) до фиолетового (128,0,128)
+
+**Визуализация:** Recharts ScatterChart, X = Roll, Y = Pitch, каждая точка = (Roll[i], Pitch[i])  
+**Что показывает:** «зону покрытия» — какие комбинации Roll+Pitch достигал оператор. Замкнутые петли = повторяющиеся движения. Хаотичное облако = нет паттерна
+
+---
+
+### v2_8: Phase Portrait (фазовый портрет)
+
+**Компонент:** `PhasePortrait/`  
+**Входные колонки:** AngleX или AngleY, time  
+**Обработка:**
+```
+rate[i] = (angle[i] − angle[i−1]) / (t[i] − t[i−1])    — производная угла
+```
+
+**Визуализация:** Recharts ScatterChart, X = угол (°), Y = скорость изменения угла (°/с)  
+**Что показывает:** динамику движения. Замкнутые эллипсы = периодические движения (маятник). Хаотичная форма = нерегулярные движения. Узкие петли = малоамплитудные движения
+
+---
+
+## 4. V3 — Тремор-аналитика
+
+**Научная база:** Gallego et al., "Real-Time Estimation of Pathological Tremor Parameters from Gyroscope Data", Sensors 2010  
+**Входные колонки:** AsX (°/с), time  
+**Полные данные, без даунсемплинга (100 Hz)**
+
+### Пайплайн: 4 этапа последовательно
+
+```
+parseTsv() → t[], gyroX[]
+  → criticallyDampedFilter() → voluntary[]
+  → tremor[] = gyroX[] − voluntary[]
+  → wflc() → frequency[], amplitude_raw[]
+  → kalmanAmplitude() → amplitude[]
+  → computeSpectrogram() → power[freq][time]
+```
+
+---
+
+### v3_1: Voluntary vs Tremor (разделение произвольного движения и тремора)
+
+**Компонент:** `VoluntaryVsTremor.tsx`  
+**Алгоритм: Critically Damped Filter (CDF)**
+
+g-h трекер, отслеживает только медленные изменения (< 2 Hz). Быстрые колебания (тремор) проходят мимо.
+
+Параметры из статьи (Table 2, оптимальные по KTE):
+```
+θ    = 0.990
+g    = 1 − θ²  = 0.0199    (коэффициент коррекции позиции)
+h    = (1−θ)²  = 0.0001    (коэффициент коррекции скорости)
+Ts   = 0.01 с  (1/100 Hz)
+```
+
+Алгоритм (рекурсивно для каждого шага k):
+```
+Предсказание:
+  x_pred = x_est + Ts × v_est
+  v_pred = v_est
+
+Коррекция:
+  residual = measurement[k] − x_pred
+  x_est    = x_pred + g × residual
+  v_est    = v_pred + (h / Ts) × residual
+
+Выход: voluntary[k] = x_est
+```
+
+**Выходные данные:**
+- `voluntary[]` — плавная оценка произвольного движения
+- `tremor[] = raw[] − voluntary[]` — остаток = тремор
+
+**Визуализация:** Recharts LineChart — два графика: верхний (raw серый + voluntary красный), нижний (tremor синий)  
+**Как читать:** если красная линия «залезает» в тремор — θ слишком маленький. Если отстаёт — слишком большой
+
+---
+
+### v3_2: Tremor Amplitude (мгновенная амплитуда тремора)
+
+**Компонент:** `TremorAmplitude.tsx`  
+**Алгоритм: WFLC → Kalman**
+
+**Этап 3a: WFLC (Weighted Frequency and Learning Controller)**  
+Моделирует тремор как `A·sin(ωt + φ)` с адаптивными параметрами через LMS.
+
+Параметры из статьи (оптимальные по FMSEd):
+```
+M   = 1        (одна гармоника)
+μ₀  = 5×10⁻⁴  (скорость адаптации частоты)
+μ₁  = 2×10⁻²  (скорость адаптации амплитуды)
+μ_b = 1×10⁻²  (bias-коррекция)
+f₀  = 8 Hz    (начальная частота)
+Clamp: 2–20 Hz
+```
+
+Алгоритм (для каждого шага k):
+```
+phase = Σ(ω[0..k-1]) × Ts
+y_hat = w_sin × sin(phase) + w_cos × cos(phase) + bias
+
+ε = tremor[k] − y_hat
+
+ω[k]  = ω[k-1] + 2×μ₀×ε×(w_sin×cos(phase) − w_cos×sin(phase))
+ω[k]  = clamp(ω[k], 2π×2, 2π×20)
+w_sin += 2×μ₁×ε×sin(phase)
+w_cos += 2×μ₁×ε×cos(phase)
+
+amplitude[k] = √(w_sin² + w_cos²)
+```
+
+**Этап 3b: Kalman Filter (сглаживание амплитуды)**  
+Параметры:
+```
+R = 0.01   (шум измерения WFLC)
+Q = 0.001  (шум процесса — скорость изменения амплитуды)
+```
+
+Алгоритм:
+```
+x_pred = x_est
+P_pred = P + Q
+K      = P_pred / (P_pred + R)
+x_est  = x_pred + K × (wflc_amp[k] − x_pred)
+P      = (1 − K) × P_pred
+```
+
+Точность Kalman vs WFLC (из статьи, Table 3): FMSEd = 0.001 vs 0.017 рад/с — Kalman точнее в 17 раз.
+
+**Визуализация:** Recharts AreaChart с заливкой к нулю  
+**Что показывает:** динамику тремора во времени. Покой ≈ 0 °/с. Усталость → рост амплитуды к концу записи
+
+---
+
+### v3_3: Tremor Frequency (мгновенная частота тремора)
+
+**Компонент:** `TremorFrequency.tsx`  
+**Алгоритм:** WFLC (тот же, что в v3_2) → `frequency[k] = ω[k] / (2π)`
+
+**Визуализация:** Recharts LineChart + ReferenceArea  
+Цветные зоны:
+- Серая (0–2 Hz): произвольные движения, не тремор
+- Оранжевая (3–7 Hz): патологический тремор (Паркинсон 4–7 Hz, мозжечковый)
+- Голубая (8–12 Hz): физиологический тремор (норма)
+
+**Что показывает:** на какой частоте дрожит рука. Стабильная горизонтальная линия = чистый тремор одной частоты. Залипание на 2 Hz = WFLC не нашёл периодический компонент (запись движения, а не покоя)
+
+---
+
+### v3_4: Tremor Spectrogram (спектрограмма тремора)
+
+**Компонент:** `TremorSpectrogram.tsx`  
+**Алгоритм: DFT в скользящем окне (Short-Time Fourier Transform)**
+
+Параметры:
+```
+windowSize = 200 семплов   (2 секунды при 100 Hz → разрешение 0.5 Hz)
+overlap    = 190 семплов   (шаг 10 семплов = 0.1 с → плавная карта)
+maxFreqHz  = 20 Hz
+Окно: Hann (для уменьшения спектральных утечек)
+```
+
+Алгоритм:
+```
+Для каждого окна [k : k+windowSize]:
+  1. Применить Hann window: x[n] × 0.5 × (1 − cos(2π×n / (W−1)))
+  2. DFT: X[f] = Σ x[n] × e^(−2πi×f×n / W)
+  3. Мощность в dB: power[f] = 10 × log₁₀(|X[f]|² + 1e−10)
+```
+
+Выход: матрица `power[freq_bins][time_bins]`
+
+**Визуализация:** HTML Canvas, тепловая карта, цветовая схема Inferno (тёмный фиолетовый → красный → оранжевый → жёлтый)  
+**Что показывает:** как менялся спектр тремора во времени. Яркая горизонтальная полоса = устойчивый тремор на одной частоте. Полоса на 8–12 Hz = физиологический тремор. Полоса на 4–7 Hz = патологический (Паркинсон)
+
+---
+
+## 5. V4 — DTW: сравнение двух записей
+
+**Входные файлы:** два TSV от одного датчика (разные записи одного упражнения)  
+**Используемые колонки:** time, AngleX, AngleY, Q0, Q1, Q2, Q3
+
+### DTW (Dynamic Time Warping) — алгоритм
+
+Два выполнения одного упражнения могут отличаться по длительности. DTW находит оптимальное нелинейное выравнивание двух последовательностей, сохраняя порядок.
+
+**Реализуется двумя способами:**
+1. По углам Эйлера: `d(i,j) = √((Roll₁[i]−Roll₂[j])² + (Pitch₁[i]−Pitch₂[j])²)`
+2. По tip-позициям: `d(i,j) = √((tipX₁[i]−tipX₂[j])² + (tipY₁[i]−tipY₂[j])²)`
+
+**Алгоритм (O(N×M) время и память):**
+
+```typescript
+// Шаг 1: матрица стоимости
+cost[0][0] = 0;
+for i in 1..N:
+  for j in 1..M:
+    d = euclidean(seq1[i-1], seq2[j-1])
+    cost[i][j] = d + min(cost[i-1][j-1],   // синхронно
+                         cost[i-1][j],       // запись 1 идёт, запись 2 ждёт
+                         cost[i][j-1])       // запись 2 идёт, запись 1 ждёт
+
+// Шаг 2: обратный ход
+path = []
+i, j = N, M
+while i > 0 and j > 0:
+  path.append((i-1, j-1))
+  (i, j) = argmin(cost[i-1][j-1], cost[i-1][j], cost[i][j-1])
+path.reverse()
+```
+
+**Выход:**
+- `distance` — суммарная стоимость пути (в ° для Euler, в у.е. для tip)
+- `normalized = distance / len(path)` — средняя разница на шаг
+- `path[]` — массив пар `(i, j)` — выравнивание
+
+**Интерпретация нормализованного DTW (для Euler):**
+- < 5 °/шаг: отличная повторяемость
+- 5–20 °/шаг: умеренные различия
+- > 20 °/шаг: сильное расхождение (усталость, другое упражнение)
+
+### Подготовка данных для V4
+
+```
+Файл 1 → parseTsv() → t1[], AngleX1[], AngleY1[], Q0-Q3_1[]
+         → tipX1[], tipY1[] из кватернионов (см. формулу в v2_2)
+         → tn1[] = t1[] / t1[last]          (нормализованное время 0..1)
+         → downsample(150) → rec1{t, tn, roll, pitch, tipX, tipY}
+
+Файл 2 → аналогично → rec2{...}
+
+computeDtw2D(roll1, pitch1, roll2, pitch2) → dtwEuler
+computeDtw2D(tipX1, tipY1, tipX2, tipY2)  → dtwTip
+```
+
+---
+
+### v4_1: Roll Comparison (Roll обоих записей по времени)
+
+**Компонент:** `RollComparison.tsx`  
+**Входные данные:** t1[], AngleX1[], t2[], AngleX2[]  
+**Обработка:** нет  
+**Визуализация:** Recharts LineChart — два ряда (красный/синий) на одних осях, X = реальные секунды  
+**Что показывает:** прямое визуальное сравнение. Видно разницу длительности, амплитуды, ритма
+
+---
+
+### v4_2: Trajectory Comparison (Roll vs Pitch, оба облака)
+
+**Компонент:** `TrajectoryComparison.tsx`  
+**Входные данные:** AngleX1[], AngleY1[], AngleX2[], AngleY2[]  
+**Обработка:** цвет точек по записи (красные vs синие)  
+**Визуализация:** Recharts ScatterChart, X = Roll, Y = Pitch, два облака наложены  
+**Что показывает:** «зону покрытия» каждой записи. Разная форма облаков = разный почерк оператора
+
+---
+
+### v4_3: DTW Alignment Matrix (матрица выравнивания DTW)
+
+**Компонент:** `DtwAlignmentMatrix.tsx`  
+**Входные данные:** `path[]` из dtwEuler или dtwTip  
+**Обработка:** нет  
+**Визуализация:** Canvas — оси: X = индексы записи 1, Y = индексы записи 2. Жёлтая линия = оптимальный путь. Пунктирная диагональ = идеальное совпадение  
+**Как читать:**
+- Диагональный участок → записи идут синхронно
+- Горизонтальный → запись 1 продвигается, запись 2 «ждёт» (одна точка записи 2 = несколько точек записи 1)
+- Вертикальный → наоборот
+
+---
+
+### v4_4: Tip Comparison 2D (tip-траектории в 2D)
+
+**Компонент:** `TipComparison.tsx`  
+**Входные данные:** Q0-Q3 обоих файлов  
+**Обработка:** `tipX = 2(q1q3+q0q2)×1.8`, `tipY = 2(q2q3−q0q1)×1.8`  
+**Визуализация:** Recharts ScatterChart, X = tipX, Y = tipY, два цветных облака  
+**Что показывает:** то же, что v4_2, но в физическом пространстве кончика датчика (более интуитивно)
+
+---
+
+### v4_5: 3D Tip Trails + DTW Threads (следы + нити DTW)
+
+**Компонент:** `TipTrailDtw3D.tsx`  
+**Входные данные:** tipX1/Y1, tipX2/Y2, tn1[], tn2[], path[]  
+**Обработка:**
+```
+Запись 1: X = tipX1,        Y = tipY1 + 0.8,   Z = tn1×3 − 1.5
+Запись 2: X = tipX2,        Y = tipY2 − 0.8,   Z = tn2×3 − 1.5
+DTW-нити: для каждой (i,j) в path[::3] — серая линия от точки записи 1 к точке записи 2
+```
+
+**Визуализация:** Canvas с ручной перспективной проекцией. Камера: два слайдера (yaw, pitch). Цвета: запись 1 = красный (#E24B4A), запись 2 = синий (#378ADD), нити = серый opacity 0.15  
+**Что показывает:** наглядное DTW. Короткие вертикальные нити = совпадение. Длинные наклонные = расхождение. Видно где именно два выполнения расходятся
+
+---
+
+### v4_6: 3D Roll Ribbons + DTW (ленты Roll обоих записей)
+
+**Компонент:** `RollRibbonsDtw3D.tsx`  
+**Входные данные:** AngleX1[], AngleX2[], tn1[], tn2[], path[]  
+**Обработка:**
+```
+Roll_norm = AngleX / 110 × 2
+Запись 1: X = +0.6,   Y = Roll_norm1,   Z = tn1×3 − 1.5
+Запись 2: X = −0.6,   Y = Roll_norm2,   Z = tn2×3 − 1.5
+Заливка: полупрозрачная лента между кривой и Y=0
+```
+
+**Визуализация:** Canvas 3D — две ленты стоят рядом. DTW-нити между ними  
+**Что показывает:** прямое сравнение формы и амплитуды Roll двух записей в объёме
+
+---
+
+### v4_7: 3D Orientation Paths + DTW (пути Roll×Pitch×Время)
+
+**Компонент:** `OrientationDtw3D.tsx`  
+**Входные данные:** AngleX1/Y1[], AngleX2/Y2[], path[]  
+**Обработка:**
+```
+X = Pitch / 70 × 1.5
+Y = Roll  / 110 × 2
+Z = (index / 149) × 3 − 1.5    (по индексу, не по времени)
+```
+
+**Визуализация:** Canvas 3D — два пути в пространстве Roll×Pitch×Время. DTW-нити соединяют сопоставленные точки  
+**Что показывает:** самый информативный граф. Вращая камеру: сбоку = разница амплитуд, сверху = разница формы, спереди = хронологическое смещение
+
+---
+
+## 6. Что работает и что нет
+
+| Метод | Результат | Причина |
+|-------|-----------|---------|
+| Кватернионы Q0-Q3 | **Работает** | Внутренняя sensor fusion (acc+gyro+mag), нет дрейфа |
+| Углы Эйлера AngleX/Y | **Работает** | Прямо из прошивки, без интегрирования |
+| Гироскоп AsX/Y/Z | **Работает** | Мгновенная угловая скорость, не нужно интегрировать |
+| √(AccX²+AccY²) | **Работает** | Убирает гравитацию, пригоден как метрика интенсивности |
+| Позиция через ∫∫acc | **Не работает** | Ошибка O(t²): 0.002g шума → 1.4 метра за 13 сек |
+| Displacement mode | **Не работает** | Гравитация протекает в X/Y при наклоне → сфера 2049 мм при вращении на месте |
+
+---
+
+## 7. Таблица всех 19 графиков
+
+| # | Название | Версия | Колонки | Библиотека | Алгоритм |
+|---|----------|--------|---------|------------|----------|
+| v2_1 | 3D Orientation Model | V2 | Q0-Q3 | Three.js | Кватернион → матрица → вершины, перспекция, painter's |
+| v2_2 | 3D Tip Trail | V2 | Q0-Q3 | Three.js | tipX/Y = f(Q), gradient line |
+| v2_3 | 3D Tip Trail + Time | V2 | Q0-Q3, time | Three.js | то же + z = tn×3-1.5 |
+| v2_4 | 3D Angle Ribbon | V2 | AngleX/Y, time | Three.js | Roll/110×2, Pitch/80×2, две ленты |
+| v2_5 | Euler Timeline | V2 | AngleX/Y, time | Recharts LineChart | нет |
+| v2_6 | Motion Intensity | V2 | AsX/Y/Z, AccX/Y, time | Recharts LineChart | √(As²), √(Acc²)×100 |
+| v2_7 | Orientation Trajectory | V2 | AngleX/Y | Recharts ScatterChart | цвет по времени |
+| v2_8 | Phase Portrait | V2 | AngleX/Y, time | Recharts ScatterChart | rate = Δangle/Δt |
+| v3_1 | Voluntary vs Tremor | V3 | AsX, time | Recharts LineChart | CDF (θ=0.99) → voluntary, tremor=raw-vol |
+| v3_2 | Tremor Amplitude | V3 | AsX, time | Recharts AreaChart | WFLC (M=1) + Kalman (R=0.01, Q=0.001) |
+| v3_3 | Tremor Frequency | V3 | AsX, time | Recharts LineChart | WFLC → ω/(2π), clamp 2–20 Hz |
+| v3_4 | Tremor Spectrogram | V3 | AsX, time | Canvas | DFT скользящее окно 200/190, Hann, Inferno |
+| v4_1 | Roll Comparison | V4 | AngleX×2, time×2 | Recharts LineChart | нет |
+| v4_2 | Trajectory Comparison | V4 | AngleX/Y×2 | Recharts ScatterChart | цвет по записи |
+| v4_3 | DTW Alignment Matrix | V4 | path[] | Canvas | DP-матрица + backtrack |
+| v4_4 | Tip Comparison 2D | V4 | Q0-Q3×2 | Recharts ScatterChart | tipX/Y = f(Q) |
+| v4_5 | 3D Tip Trails + DTW | V4 | Q0-Q3×2, time×2, path[] | Canvas 3D | z=tn×3-1.5, DTW-нити |
+| v4_6 | 3D Roll Ribbons + DTW | V4 | AngleX×2, time×2, path[] | Canvas 3D | Roll/110×2, X=±0.6, DTW-нити |
+| v4_7 | 3D Orientation + DTW | V4 | AngleX/Y×2, path[] | Canvas 3D | X=Pitch/70×1.5, Y=Roll/110×2, Z=idx/149×3-1.5 |
