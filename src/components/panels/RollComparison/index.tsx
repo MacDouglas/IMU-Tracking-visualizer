@@ -25,7 +25,7 @@ export default function RollComparison({ data }: Props) {
         <XAxis
           dataKey="x" type="number" name="Время"
           unit="с" tick={{ fontSize: 11 }}
-          domain={[0, Math.max(rec1.duration, rec2.duration)]}
+          domain={[0, Math.max(rec1.duration, rec2.duration) || 1]}
         />
         <YAxis
           dataKey="y" type="number" name="Roll"

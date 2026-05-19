@@ -139,21 +139,3 @@ export function buildVizData(rows: SensorRow[], targetPoints = 120): ImuVisualiz
   const derived = computeDerived(rec);
   return downsampleColumnar(rec, derived, targetPoints);
 }
-
-// ─── FFT ──────────────────────────────────────────────────────────────────────
-
-/**
- * Simple FFT wrapper using fft.js
- * Input: signal at full 100 Hz (no downsample)
- * Returns: { frequencies: number[], psd: number[] }
- */
-export function computeFFT(signal: number[], sampleRate = 100): { frequencies: number[]; psd: number[] } {
-  // Pad to next power of 2
-  let n = 1;
-  while (n < signal.length) n <<= 1;
-  // Placeholder — replace with fft.js when available
-  const frequencies = Array.from({ length: n / 2 }, (_, i) => (i * sampleRate) / n);
-  const psd = new Array(n / 2).fill(0);
-
-  return { frequencies, psd };
-}

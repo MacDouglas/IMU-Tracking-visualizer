@@ -143,8 +143,7 @@ export default function TremorSpectrogram({
           style={{
             width: '100%',
             maxWidth: width,
-            height: '100%',
-            maxHeight: height,
+            aspectRatio: `${width} / ${height}`,
             display: 'block',
           }}
         />

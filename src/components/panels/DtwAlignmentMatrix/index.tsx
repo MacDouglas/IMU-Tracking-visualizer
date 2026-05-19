@@ -50,6 +50,7 @@ export default function DtwAlignmentMatrix({ data, width = 500, height = 500 }: 
     ctx.setLineDash([]);
 
     // DTW path
+    if (!dtwEuler.path.length) return;
     ctx.strokeStyle = '#D4A017';
     ctx.lineWidth = 3;
     ctx.beginPath();

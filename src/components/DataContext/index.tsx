@@ -41,11 +41,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     );
     workerRef.current = worker;
 
-    worker.postMessage({
-      t: rows.map(r => r.time),
-      gyroX: rows.map(r => r.asX),
-    });
-
     worker.onmessage = (e: MessageEvent<TremorAnalysis>) => {
       setTremorData(e.data);
       setIsProcessing(false);
@@ -56,6 +51,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setIsProcessing(false);
       worker.terminate();
     };
+
+    worker.postMessage({
+      t: rows.map(r => r.time),
+      gyroX: rows.map(r => r.asX),
+    });
 
     return () => worker.terminate();
   }, [activeTab, rows, tremorData]);

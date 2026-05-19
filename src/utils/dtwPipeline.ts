@@ -32,14 +32,16 @@ function buildSummary(
 
   const tipX: number[] = [];
   const tipY: number[] = [];
+  const tipZ: number[] = [];
   for (const i of idx) {
     const r = rows[i];
-    const [tx, ty] = computeTipPosition(r.q0, r.q1, r.q2, r.q3);
+    const [tx, ty, tz] = computeTipPosition(r.q0, r.q1, r.q2, r.q3);
     tipX.push(Math.round(tx * 1000) / 1000);
     tipY.push(Math.round(ty * 1000) / 1000);
+    tipZ.push(Math.round(tz * 1000) / 1000);
   }
 
-  return { t, tn, roll, pitch, tipX, tipY, duration, label };
+  return { t, tn, roll, pitch, tipX, tipY, tipZ, duration, label };
 }
 
 /**

@@ -56,6 +56,10 @@ function Chart({ vizData, axis }: { vizData: ImuVisualizationData; axis: Axis })
       });
     }
 
+    if (pts.length === 0) {
+      return { points: [], xDomain: [-5, 5], yDomain: [-10, 10] };
+    }
+
     const xs = pts.map(p => p.x);
     const ys = pts.map(p => p.y);
     const xPad = 5;

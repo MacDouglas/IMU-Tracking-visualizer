@@ -22,6 +22,8 @@ export interface RecordingSummary {
   tipX: number[];
   /** Tip Y from quaternion rotation of [0,0,1.8] */
   tipY: number[];
+  /** Tip Z from quaternion rotation of [0,0,1.8] */
+  tipZ: number[];
   /** Duration in seconds */
   duration: number;
   /** Label for display */

@@ -21,6 +21,7 @@ export default function TrajectoryComparison({ data }: Props) {
 
   const allRoll = [...rec1.roll, ...rec2.roll];
   const allPitch = [...rec1.pitch, ...rec2.pitch];
+  if (allRoll.length === 0) return null;
   const rMin = Math.min(...allRoll) - 10;
   const rMax = Math.max(...allRoll) + 10;
   const pMin = Math.min(...allPitch) - 10;
