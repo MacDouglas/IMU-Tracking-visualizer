@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Grid, Line } from '@react-three/drei';
-import { useData } from '../../DataContext';
+import { useData } from '../../DataContext/context';
 import { downsample } from '../../../utils/tsvParser';
 
 // ─── Types ────────────────────────────────────────────────────────────────────

@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Grid } from '@react-three/drei';
 import * as THREE from 'three';
-import { useData } from '../../DataContext';
+import { useData } from '../../DataContext/context';
 import type { SensorRow } from '../../../utils/tsvParser';
 
 // ─── HandModel ────────────────────────────────────────────────────────────────

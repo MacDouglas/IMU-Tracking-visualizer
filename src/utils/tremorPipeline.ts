@@ -10,7 +10,7 @@
 // Input: raw gyroscope axis data (°/s) at 100Hz
 // Output: TremorAnalysis with voluntary, tremor, frequency, amplitude, spectrogram
 
-// @ts-ignore — fft.js has no bundled TypeScript types
+// @ts-expect-error — fft.js has no bundled TypeScript types
 import FFT from 'fft.js';
 
 import {

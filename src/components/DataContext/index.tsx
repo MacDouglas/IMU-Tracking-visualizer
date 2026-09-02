@@ -5,9 +5,6 @@ import { buildVizData } from '../../utils/signalProcessing';
 import { DataContext } from './context';
 import type { AppTab } from './context';
 
-export type { AppTab } from './context';
-export { useData } from './context';
-
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const [rows, setRows] = useState<SensorRow[]>([]);
   const [currentIndex, setCurrentIndexState] = useState(0);
@@ -21,18 +18,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     return buildVizData(rows, 120);
   }, [rows]);
 
-  // Reset tremor state when new file is loaded
-  useEffect(() => {
-    setTremorData(null);
-    setIsProcessing(false);
-    workerRef.current?.terminate();
-  }, [rows]);
-
   // Start tremor analysis lazily — only when tremor tab is active
   useEffect(() => {
     if (activeTab !== 'tremor' || rows.length < 100 || tremorData !== null) return;
 
     workerRef.current?.terminate();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsProcessing(true);
 
     const worker = new Worker(
@@ -63,6 +54,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const handleSetRows = useCallback((newRows: SensorRow[]) => {
     setRows(newRows);
     setCurrentIndexState(0);
+    setTremorData(null);
+    setIsProcessing(false);
+    workerRef.current?.terminate();
   }, []);
 
   const setCurrentIndex = useCallback((i: number | ((prev: number) => number)) => {

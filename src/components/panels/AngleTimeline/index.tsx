@@ -30,7 +30,6 @@ function Line3({
 }) {
   const mat = useMemo(
     () => new THREE.LineBasicMaterial({ color, linewidth, transparent, opacity }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [color, linewidth, transparent, opacity],
   );
   const obj = useMemo(() => new THREE.Line(geometry, mat), [geometry, mat]);

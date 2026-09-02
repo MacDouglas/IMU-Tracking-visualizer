@@ -69,6 +69,7 @@ function Chart({ vizData, axis }: { vizData: ImuVisualizationData; axis: Axis })
       xDomain: [Math.floor(Math.min(...xs)) - xPad, Math.ceil(Math.max(...xs)) + xPad],
       yDomain: [Math.floor(Math.min(...ys)) - yPad, Math.ceil(Math.max(...ys)) + yPad],
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vizData, axis]);
 
   const label = AXIS_LABELS[axis];

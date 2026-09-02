@@ -126,7 +126,7 @@ export default function TremorSpectrogram({
       const x = ti * cellW + cellW / 2;
       ctx.fillText(`${timeBins[ti]}s`, x, height - 4);
     }
-  }, [spectrogram, width, height, vmin, vmax, nT, nF]);
+  }, [spectrogram, width, height, vmin, vmax, nT, nF, freqBins, power, timeBins]);
 
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>

@@ -58,7 +58,8 @@ export default function DtwAlignmentMatrix({ data, width = 500, height = 500 }: 
       const [i, j] = dtwEuler.path[k];
       const x = pad + (i / (N1 - 1)) * pw;
       const y = pad + ph - (j / (N2 - 1)) * ph;
-      k === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      if (k === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
     }
     ctx.stroke();
 
