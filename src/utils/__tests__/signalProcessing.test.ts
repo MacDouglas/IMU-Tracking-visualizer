@@ -32,6 +32,20 @@ describe('downsampleIndices', () => {
     for (let k = 1; k < idx.length; k++) expect(idx[k]).toBeGreaterThan(idx[k - 1]);
   });
   test('пустая запись', () => expect(downsampleIndices(0, 120)).toEqual([]));
+  test('контрольное значение v5.2: (3244, 120) → 117 индексов, последний 3243', () => {
+    const idx = downsampleIndices(3244, 120);
+    expect(idx.length).toBe(117);
+    expect(idx[idx.length - 1]).toBe(3243);
+  });
+});
+
+test('контрольное значение v5.2: фазовый портрет v2 по прореженным точкам', () => {
+  const { rows, extras } = session('wrist_articulation_v2.txt');
+  const v = buildVizData(rows, extras, 120);
+  const peak = (a: number[]) => Math.max(...a.map(Math.abs));
+  expect(Math.abs(peak(v.derived.rateX) - 281)).toBeLessThanOrEqual(1);
+  expect(Math.abs(peak(v.derived.rateY) - 189)).toBeLessThanOrEqual(1);
+  expect(peak(v.derived.rateZ)).toBeLessThan(1000);
 });
 
 describe('buildVizData', () => {
