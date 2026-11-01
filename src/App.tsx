@@ -23,7 +23,6 @@ import TipComparison from './components/panels/TipComparison';
 import TipTrailDtw3D from './components/panels/TipTrailDtw3D';
 import RollRibbonsDtw3D from './components/panels/RollRibbonsDtw3D';
 import OrientationDtw3D from './components/panels/OrientationDtw3D';
-import { parseTSV } from './utils/tsvParser';
 import { runDtwPipeline } from './utils/dtwPipeline';
 import type { DtwComparisonData } from './types/dtw';
 import type { ReactNode } from 'react';
@@ -395,11 +394,7 @@ function ComparisonTab() {
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 function Dashboard() {
-  const { rows, setRows, vizData, activeTab, currentIndex, setCurrentIndex } = useData();
-
-  const handleData = (raw: string) => {
-    setRows(parseTSV(raw));
-  };
+  const { rows, loadRaw, isLoading, loadError, vizData, activeTab, currentIndex, setCurrentIndex } = useData();
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
@@ -425,7 +420,19 @@ function Dashboard() {
 
         <div style={{ width: 1, height: 22, background: '#e5e4e7', flexShrink: 0 }} />
 
-        <FileUploader onData={handleData} />
+        <FileUploader onData={loadRaw} />
+
+        {isLoading && (
+          <span style={{ fontSize: 12, color: '#888', whiteSpace: 'nowrap', flexShrink: 0 }}>
+            Обработка...
+          </span>
+        )}
+
+        {loadError && (
+          <span style={{ fontSize: 12, color: '#E24B4A', whiteSpace: 'nowrap', flexShrink: 0 }}>
+            {loadError}
+          </span>
+        )}
 
         {rows.length > 0 && (
           <span style={{ fontSize: 12, color: '#888', whiteSpace: 'nowrap', flexShrink: 0 }}>
