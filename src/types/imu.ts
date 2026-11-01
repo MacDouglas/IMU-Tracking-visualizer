@@ -51,8 +51,10 @@ export interface ImuRecording {
 export interface ImuDerived {
   /** Gyroscope magnitude √(gx²+gy²+gz²) in °/s */
   gyroMag: number[];
-  /** Horizontal acceleration √(ax²+ay²) in g */
+  /** Horizontal acceleration √(ax²+ay²) in g — raw sensor axes, valid only for a horizontal sensor */
   accHoriz: number[];
+  /** Horizontal motion acceleration in room axes, gravity and bias removed, g (v5.1). Null in Displacement mode */
+  accMotionHoriz: number[] | null;
   /** Tip of [0,0,1.8] rotated by R from Euler angles (3rd column of R × 1.8) */
   tipX: number[];
   tipY: number[];

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip,
   ResponsiveContainer, Legend, ReferenceLine,
@@ -16,17 +16,41 @@ const EMPTY_STATE = (
   </div>
 );
 
+type AccSource = 'raw' | 'motion';
+
+const ACC_LEGEND: Record<AccSource, string> = {
+  raw: 'Ускорение √(Ax²+Ay²) ×100, г',
+  motion: 'Ускорение движения (без g, оси комнаты) ×100, г',
+};
+
 function Chart({ vizData }: { vizData: ImuVisualizationData }) {
+  // raw: sensor axes, contains gravity once the hand tilts; motion: v5.1 accMotionHorizG
+  const [accSource, setAccSource] = useState<AccSource>('raw');
+  const motionAvailable = vizData.derived.accMotionHoriz !== null;
+  const source: AccSource = motionAvailable ? accSource : 'raw';
+
   const chartData = useMemo(() => {
     const { t } = vizData.recording;
-    const { gyroMag, accHoriz } = vizData.derived;
+    const { gyroMag } = vizData.derived;
+    const acc = (source === 'motion' ? vizData.derived.accMotionHoriz : null) ?? vizData.derived.accHoriz;
     return t.map((time, i) => ({
       t: Math.round(time * 10) / 10,
       gyro: Math.round(gyroMag[i] * 10) / 10,
       // ×100 to bring g-units into visual parity with °/s on shared axis
-      acc: Math.round(accHoriz[i] * 100 * 10) / 10,
+      acc: Math.round(acc[i] * 100 * 10) / 10,
     }));
-  }, [vizData]);
+  }, [vizData, source]);
+
+  const btnStyle = (s: AccSource): React.CSSProperties => ({
+    padding: '1px 8px',
+    fontSize: 11,
+    border: '1px solid #d0d0d0',
+    borderRadius: 4,
+    background: source === s ? '#534AB7' : '#fff',
+    color: source === s ? '#fff' : '#555',
+    cursor: 'pointer',
+    marginLeft: 4,
+  });
 
   const peakGyro = useMemo(
     () => Math.max(...vizData.derived.gyroMag).toFixed(1),
@@ -42,9 +66,22 @@ function Chart({ vizData }: { vizData: ImuVisualizationData }) {
         color: '#888',
         flexShrink: 0,
         borderBottom: '1px solid #f0f0f0',
+        display: 'flex',
+        alignItems: 'center',
       }}>
-        Пик гироскопа: <span style={{ color: '#534AB7', fontWeight: 600 }}>{peakGyro} °/с</span>
-        <span style={{ marginLeft: 12, color: '#aaa' }}>ускорение масштабировано ×100</span>
+        Пик гироскопа: <span style={{ color: '#534AB7', fontWeight: 600, marginLeft: 4 }}>{peakGyro} °/с</span>
+        <span style={{ marginLeft: 12, color: '#aaa' }}>ускорение ×100</span>
+        <span style={{ flex: 1 }} />
+        {motionAvailable && (
+          <>
+            <button style={btnStyle('raw')} title="Оси датчика; при наклоне кисти содержит гравитацию" onClick={() => setAccSource('raw')}>
+              Сырое
+            </button>
+            <button style={btnStyle('motion')} title="Оси комнаты, гравитация и смещение вычтены" onClick={() => setAccSource('motion')}>
+              Без g
+            </button>
+          </>
+        )}
       </div>
 
       {/* График */}
@@ -66,7 +103,7 @@ function Chart({ vizData }: { vizData: ImuVisualizationData }) {
             <Tooltip
               formatter={(v: unknown, name: unknown) => [
                 `${v}${name === 'gyro' ? ' °/с' : ' г×100'}`,
-                name === 'gyro' ? 'Гироскоп' : 'Горизонт. ускорение',
+                name === 'gyro' ? 'Гироскоп' : source === 'motion' ? 'Ускорение движения' : 'Горизонт. ускорение',
               ]}
               labelFormatter={(l) => `${l} с`}
             />
@@ -74,7 +111,7 @@ function Chart({ vizData }: { vizData: ImuVisualizationData }) {
               formatter={(value) =>
                 value === 'gyro'
                   ? 'Гироскоп √(Gx²+Gy²+Gz²), °/с'
-                  : 'Ускорение √(Ax²+Ay²) ×100, г'
+                  : ACC_LEGEND[source]
               }
               wrapperStyle={{ fontSize: 11 }}
             />

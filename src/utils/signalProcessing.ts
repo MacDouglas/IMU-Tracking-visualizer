@@ -88,6 +88,7 @@ export function computeDerived(rec: ImuRecording, extras: SessionExtras): ImuDer
   return {
     gyroMag,
     accHoriz,
+    accMotionHoriz: extras.accMotionHorizG ? Array.from(extras.accMotionHorizG) : null,
     tipX: Array.from(extras.tip.x),
     tipY: Array.from(extras.tip.y),
     tipZ: Array.from(extras.tip.z),
@@ -139,6 +140,7 @@ function downsampleColumnar(
     derived: {
       gyroMag: pick(derived.gyroMag),
       accHoriz: pick(derived.accHoriz),
+      accMotionHoriz: derived.accMotionHoriz && pick(derived.accMotionHoriz),
       tipX: pick(derived.tipX),
       tipY: pick(derived.tipY),
       tipZ: pick(derived.tipZ),
