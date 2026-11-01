@@ -80,6 +80,44 @@ function PanelCard({
   );
 }
 
+// ─── Displacement mode ────────────────────────────────────────────────────────
+
+const DISPLACEMENT_REASON =
+  'Файл записан в режиме Displacement: ускорение и гироскоп заменены константами';
+
+/** Placeholder for a panel whose input data is unusable in Displacement mode */
+function UnavailablePanel({ what }: { what: string }) {
+  return (
+    <div style={{
+      width: '100%', height: '100%', display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center', gap: 6, padding: 24,
+      textAlign: 'center', color: '#999', fontSize: 13,
+    }}>
+      <span>{what} недоступно</span>
+      <span style={{ fontSize: 11, color: '#bbb' }}>{DISPLACEMENT_REASON}</span>
+    </div>
+  );
+}
+
+function DisplacementBanner() {
+  const { extras } = useData();
+  if (!extras?.displacementMode) return null;
+  return (
+    <div style={{
+      flexShrink: 0,
+      padding: '8px 16px',
+      fontSize: 12,
+      color: '#7A4B00',
+      background: '#FFF4D6',
+      borderBottom: '1px solid #F0DCA0',
+    }}>
+      <b>Displacement mode.</b> {DISPLACEMENT_REASON}. Траектория, тремор и интенсивность
+      движения недоступны; ориентация (углы) показана корректно. Для анализа движения
+      запишите файл с выключенным Displacement mode (вкладка Trajectory в приложении WitMotion).
+    </div>
+  );
+}
+
 // ─── TabBar ───────────────────────────────────────────────────────────────────
 
 const TABS: { id: AppTab; label: string }[] = [
@@ -132,7 +170,8 @@ function TabBar() {
 // ─── Motion tab ───────────────────────────────────────────────────────────────
 
 function MotionTab() {
-  const { vizData, currentIndex } = useData();
+  const { vizData, currentIndex, extras } = useData();
+  const displacement = !!extras?.displacementMode;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'flex-start' }}>
@@ -151,7 +190,7 @@ function MotionTab() {
           <AngleTimeline data={vizData} currentIndex={currentIndex} />
         </PanelCard>
         <PanelCard title="Профиль интенсивности движения" width={500} height={456}>
-          <IntensityProfile />
+          {displacement ? <UnavailablePanel what="Профиль интенсивности" /> : <IntensityProfile />}
         </PanelCard>
       </div>
 
@@ -166,7 +205,7 @@ function MotionTab() {
 
       <div style={{ display: 'flex', gap: 16 }}>
         <PanelCard title="Спектр тремора (FFT)" width={500} height={456}>
-          <TremorSpectrum />
+          {displacement ? <UnavailablePanel what="Спектр тремора" /> : <TremorSpectrum />}
         </PanelCard>
       </div>
 
@@ -177,7 +216,15 @@ function MotionTab() {
 // ─── Tremor tab ───────────────────────────────────────────────────────────────
 
 function TremorTab() {
-  const { tremorData, isProcessing, rows } = useData();
+  const { tremorData, isProcessing, rows, extras } = useData();
+
+  if (extras?.displacementMode) {
+    return (
+      <div style={{ padding: 32, color: '#999', fontSize: 14 }}>
+        Анализ тремора недоступен. {DISPLACEMENT_REASON}.
+      </div>
+    );
+  }
 
   if (rows.length < 100) {
     return (
@@ -479,6 +526,7 @@ function Dashboard() {
 
       {/* ── Таб-бар ── */}
       <TabBar />
+      <DisplacementBanner />
 
       {/* ── Контент вкладок ── */}
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>

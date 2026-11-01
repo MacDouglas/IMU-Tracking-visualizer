@@ -28,7 +28,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   // Start tremor analysis lazily — only when tremor tab is active
   useEffect(() => {
-    if (activeTab !== 'tremor' || rows.length < 100 || tremorData !== null) return;
+    // Displacement mode: gyro is all zeros, tremor analysis is meaningless (v5.1 §1 №11)
+    if (activeTab !== 'tremor' || rows.length < 100 || tremorData !== null || extras?.displacementMode) return;
 
     workerRef.current?.terminate();
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -57,7 +58,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => worker.terminate();
-  }, [activeTab, rows, tremorData]);
+  }, [activeTab, rows, tremorData, extras]);
 
   const loadRaw = useCallback((raw: string) => {
     const id = ++loadIdRef.current;
