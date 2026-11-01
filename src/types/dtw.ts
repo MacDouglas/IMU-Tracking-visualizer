@@ -18,12 +18,12 @@ export interface RecordingSummary {
   roll: number[];
   /** Pitch = AngleY (°) */
   pitch: number[];
-  /** Tip X from quaternion rotation of [0,0,1.8] */
+  /** Tip of [0,0,1.8] rotated by R from Euler angles (3rd column of R × 1.8) */
   tipX: number[];
-  /** Tip Y from quaternion rotation of [0,0,1.8] */
   tipY: number[];
-  /** Tip Z from quaternion rotation of [0,0,1.8] */
   tipZ: number[];
+  /** Trajectory p (mm, relative to start); null in Displacement mode or for too-short recordings */
+  traj: { x: number[]; y: number[]; z: number[] } | null;
   /** Duration in seconds */
   duration: number;
   /** Label for display */
@@ -33,8 +33,10 @@ export interface RecordingSummary {
 export interface DtwComparisonData {
   rec1: RecordingSummary;
   rec2: RecordingSummary;
-  /** DTW on (Roll, Pitch) */
+  /** DTW on (Roll, Pitch), ° */
   dtwEuler: DtwResult;
-  /** DTW on (tipX, tipY) */
+  /** DTW on (tipX, tipY), scene units */
   dtwTip: DtwResult;
+  /** DTW on trajectory (x, y, z), mm; null when either recording has no trajectory */
+  dtwTraj: DtwResult | null;
 }

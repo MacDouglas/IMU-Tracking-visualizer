@@ -1,19 +1,27 @@
 // utils/dtwPipeline.ts
 //
-// Orchestrates: parse two TSV files → downsample → compute DTW
-// Returns DtwComparisonData ready for all 7 v4 panels.
+// Orchestrates: process two TSV files (loadSession) → downsample → compute DTW
+// Returns DtwComparisonData ready for the comparison panels.
+//
+// Downsampling rule (step floor(N/150), first 150 points, roll/pitch rounded
+// to 0.1°) is fixed: the v5.1 control value 5190.9° is defined with it.
 
-import type { DtwComparisonData, RecordingSummary } from '../types/dtw';
-import { parseTSV } from './tsvParser';
-import { computeTipPosition } from './signalProcessing';
+import type { DtwComparisonData, DtwResult, RecordingSummary } from '../types/dtw';
+import { loadSession } from './sessionLoader';
+import { dtw } from './imuProcessing';
 import { computeDtw2D } from './dtwAlgorithm';
+
+const r1 = (v: number) => Math.round(v * 10) / 10;
+const r3 = (v: number) => Math.round(v * 1000) / 1000;
 
 function buildSummary(
   tsvContent: string,
   label: string,
   targetPoints: number = 150
 ): RecordingSummary {
-  const rows = parseTSV(tsvContent);
+  const s = loadSession(tsvContent);
+  if (!s.ok) throw new Error(`${label}: ${s.error}`);
+  const { rows, extras } = s;
   const N = rows.length;
   const step = Math.max(1, Math.floor(N / targetPoints));
 
@@ -24,24 +32,36 @@ function buildSummary(
   }
 
   const duration = rows[N - 1].time;
+  const T = extras.trajectory;
 
-  const t = idx.map(i => Math.round(rows[i].time * 10) / 10);
-  const tn = idx.map(i => Math.round((rows[i].time / duration) * 1000) / 1000);
-  const roll = idx.map(i => Math.round(rows[i].angleX * 10) / 10);
-  const pitch = idx.map(i => Math.round(rows[i].angleY * 10) / 10);
+  return {
+    t: idx.map(i => r1(rows[i].time)),
+    tn: idx.map(i => Math.round((rows[i].time / duration) * 1000) / 1000),
+    roll: idx.map(i => r1(rows[i].angleX)),
+    pitch: idx.map(i => r1(rows[i].angleY)),
+    tipX: idx.map(i => r3(extras.tip.x[i])),
+    tipY: idx.map(i => r3(extras.tip.y[i])),
+    tipZ: idx.map(i => r3(extras.tip.z[i])),
+    traj: T && {
+      x: idx.map(i => r1(T.p[0][i])),
+      y: idx.map(i => r1(T.p[1][i])),
+      z: idx.map(i => r1(T.p[2][i])),
+    },
+    duration,
+    label,
+  };
+}
 
-  const tipX: number[] = [];
-  const tipY: number[] = [];
-  const tipZ: number[] = [];
-  for (const i of idx) {
-    const r = rows[i];
-    const [tx, ty, tz] = computeTipPosition(r.q0, r.q1, r.q2, r.q3);
-    tipX.push(Math.round(tx * 1000) / 1000);
-    tipY.push(Math.round(ty * 1000) / 1000);
-    tipZ.push(Math.round(tz * 1000) / 1000);
-  }
-
-  return { t, tn, roll, pitch, tipX, tipY, tipZ, duration, label };
+/** N-dimensional DTW on the trajectory, rounded like computeDtw2D */
+function trajectoryDtw(a: RecordingSummary, b: RecordingSummary): DtwResult | null {
+  if (!a.traj || !b.traj) return null;
+  const pts = (t: NonNullable<RecordingSummary['traj']>) => t.x.map((x, i) => [x, t.y[i], t.z[i]]);
+  const r = dtw(pts(a.traj), pts(b.traj));
+  return {
+    distance: Math.round(r.distance * 10) / 10,
+    normalized: Math.round(r.normalized * 100) / 100,
+    path: r.path,
+  };
 }
 
 /**
@@ -64,6 +84,7 @@ export function runDtwPipeline(
 
   const dtwEuler = computeDtw2D(rec1.roll, rec1.pitch, rec2.roll, rec2.pitch);
   const dtwTip = computeDtw2D(rec1.tipX, rec1.tipY, rec2.tipX, rec2.tipY);
+  const dtwTraj = trajectoryDtw(rec1, rec2);
 
-  return { rec1, rec2, dtwEuler, dtwTip };
+  return { rec1, rec2, dtwEuler, dtwTip, dtwTraj };
 }

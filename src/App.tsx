@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { DataProvider } from './components/DataContext';
 import { useData } from './components/DataContext/context';
 import type { AppTab } from './components/DataContext/context';
@@ -25,7 +25,8 @@ import TipComparison from './components/panels/TipComparison';
 import TipTrailDtw3D from './components/panels/TipTrailDtw3D';
 import RollRibbonsDtw3D from './components/panels/RollRibbonsDtw3D';
 import OrientationDtw3D from './components/panels/OrientationDtw3D';
-import { runDtwPipeline } from './utils/dtwPipeline';
+import TrajectoryDtwComparison from './components/panels/TrajectoryDtwComparison';
+import type { DtwRequest, DtwResponse } from './utils/dtwWorker';
 import type { DtwComparisonData } from './types/dtw';
 import type { ReactNode } from 'react';
 
@@ -330,6 +331,11 @@ function ComparisonPanels({ data }: { data: DtwComparisonData }) {
         <OrientationDtw3D data={data} />
       </PanelCard>
 
+      {/* Строка 5: траектории руки (v5.1) */}
+      <PanelCard title="Траектории руки + DTW (вид сверху)" width={500} height={456}>
+        <TrajectoryDtwComparison data={data} />
+      </PanelCard>
+
     </div>
   );
 }
@@ -339,27 +345,56 @@ function ComparisonTab() {
   const [name1, setName1] = useState('');
   const [comparison, setComparison] = useState<DtwComparisonData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const workerRef = useRef<Worker | null>(null);
+  // Incremented on every request; responses for older requests are dropped.
+  const requestIdRef = useRef(0);
+
+  useEffect(() => () => workerRef.current?.terminate(), []);
+
+  const cancelPending = () => {
+    requestIdRef.current++;
+    workerRef.current?.terminate();
+    workerRef.current = null;
+    setLoading(false);
+  };
 
   const handleFile1 = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
+    cancelPending();
     setName1(f.name);
     setFile1(await f.text());
     setComparison(null);
+    setError(null);
   }, []);
 
   const handleFile2 = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f || !file1) return;
+    cancelPending();
+    const id = requestIdRef.current;
     setLoading(true);
-    try {
-      const result = runDtwPipeline(file1, await f.text(), name1, f.name);
-      setComparison(result);
-    } catch (err) {
-      console.error('DTW pipeline error:', err);
-    } finally {
+    setError(null);
+
+    const worker = new Worker(new URL('./utils/dtwWorker.ts', import.meta.url), { type: 'module' });
+    workerRef.current = worker;
+    const settle = (result: { data: DtwComparisonData | null; error: string | null }) => {
+      worker.terminate();
+      if (workerRef.current === worker) workerRef.current = null;
+      if (id !== requestIdRef.current) return;
+      setComparison(result.data);
+      setError(result.error);
       setLoading(false);
-    }
+    };
+    worker.onmessage = (ev: MessageEvent<DtwResponse>) => {
+      const d = ev.data;
+      settle(d.ok ? { data: d.data, error: null } : { data: null, error: d.error });
+    };
+    worker.onerror = (ev) => settle({ data: null, error: ev.message || 'Ошибка вычисления DTW' });
+
+    const request: DtwRequest = { id, tsv1: file1, tsv2: await f.text(), label1: name1, label2: f.name };
+    worker.postMessage(request);
   }, [file1, name1]);
 
   const sep = <div style={{ width: 1, height: 22, background: '#e5e4e7', flexShrink: 0 }} />;
@@ -415,6 +450,12 @@ function ComparisonTab() {
           </span>
         )}
 
+        {error && (
+          <span style={{ fontSize: 12, color: '#E24B4A', whiteSpace: 'nowrap', flexShrink: 0 }}>
+            {error}
+          </span>
+        )}
+
         {/* Metrics */}
         {comparison && (
           <>
@@ -432,6 +473,17 @@ function ComparisonTab() {
             <span style={{ fontSize: 12, color: '#888', whiteSpace: 'nowrap', flexShrink: 0 }}>
               ({comparison.dtwEuler.normalized} °/шаг)
             </span>
+            {comparison.dtwTraj && (
+              <>
+                {sep}
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#534AB7', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                  DTW траектории {comparison.dtwTraj.distance} мм
+                </span>
+                <span style={{ fontSize: 12, color: '#888', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                  ({comparison.dtwTraj.normalized} мм/шаг)
+                </span>
+              </>
+            )}
           </>
         )}
       </div>
