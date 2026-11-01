@@ -11,6 +11,8 @@ import PhasePortrait from './components/panels/PhasePortrait';
 import TremorSpectrum from './components/panels/TremorSpectrum';
 import AngleRibbon3D from './components/panels/AngleRibbon3D';
 import TipTrailTimeline3D from './components/panels/TipTrailTimeline3D';
+import Trajectory3D from './components/panels/Trajectory3D';
+import TrajectoryTimeline from './components/panels/TrajectoryTimeline';
 import VoluntaryVsTremor from './components/panels/VoluntaryVsTremor';
 import TremorAmplitude from './components/panels/TremorAmplitude';
 import TremorFrequency from './components/panels/TremorFrequency';
@@ -182,6 +184,19 @@ function MotionTab() {
         </PanelCard>
         <PanelCard title="3D След со временем" width={500} height={456}>
           <TipTrailTimeline3D data={vizData} currentIndex={currentIndex} />
+        </PanelCard>
+      </div>
+
+      <div style={{ display: 'flex', gap: 16 }}>
+        <PanelCard title="3D Траектория руки" width={500} height={456}>
+          {displacement
+            ? <UnavailablePanel what="Траектория" />
+            : <Trajectory3D data={vizData} currentIndex={currentIndex} />}
+        </PanelCard>
+        <PanelCard title="Траектория во времени" width={500} height={456}>
+          {displacement
+            ? <UnavailablePanel what="Траектория" />
+            : <TrajectoryTimeline data={vizData} currentIndex={currentIndex} />}
         </PanelCard>
       </div>
 
