@@ -1,4 +1,5 @@
 import type { SensorRow } from './tsvParser';
+import { DT } from './imuProcessing';
 import type { ImuRecording, ImuDerived, ImuVisualizationData } from '../types/imu';
 
 /** √(AsX² + AsY² + AsZ²) — gyroscope magnitude °/s */
@@ -133,7 +134,7 @@ export function buildVizData(rows: SensorRow[], targetPoints = 120): ImuVisualiz
     accZ:   rows.map(r => r.accZ),
     length: N,
     duration,
-    sampleRate: duration > 0 ? Math.round(N / duration) : 100,
+    sampleRate: 1 / DT,
   };
 
   const derived = computeDerived(rec);

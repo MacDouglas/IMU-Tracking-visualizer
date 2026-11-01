@@ -1,5 +1,7 @@
+import { DT } from './imuProcessing';
+
 export interface SensorRow {
-  time: number;          // relative seconds from first row
+  time: number;          // seconds, i·DT (file timestamps are not used, see parseTSV)
   deviceName: string;
   accX: number; accY: number; accZ: number;      // g
   asX: number;  asY: number;  asZ: number;       // °/s
@@ -13,27 +15,21 @@ export interface SensorRow {
   battery: number;
 }
 
-/** Parse WitMotion TSV string → typed rows with relative timestamps */
+/**
+ * Parse WitMotion TSV string → typed rows.
+ * time[i] = i·DT: file timestamps are uneven because of BLE batching
+ * (~68% of rows share a timestamp), and the sensor runs at a fixed 100 Hz.
+ */
 export function parseTSV(raw: string): SensorRow[] {
   const lines = raw.trim().split('\n').filter(l => l.trim() && !l.startsWith('time'));
   if (lines.length === 0) return [];
 
-  const parseTime = (s: string): number => {
-    // Format: "2026-3-25 0:12:55.983"
-    return new Date(s).getTime();
-  };
+  const rawRows = lines.map(line => line.split('\t'));
 
-  const rawRows = lines.map(line => {
-    const cols = line.split('\t');
-    return cols;
-  });
-
-  const t0 = parseTime(rawRows[0][0]);
-
-  return rawRows.map(cols => {
+  return rawRows.map((cols, row) => {
     const n = (i: number) => { const v = parseFloat(cols[i]); return isNaN(v) ? NaN : v; };
     return {
-      time:        (parseTime(cols[0]) - t0) / 1000,
+      time:        row * DT,
       deviceName:  cols[1] ?? '',
       accX: n(2),  accY: n(3),  accZ: n(4),
       asX:  n(5),  asY:  n(6),  asZ:  n(7),
@@ -46,16 +42,6 @@ export function parseTSV(raw: string): SensorRow[] {
       version:     n(25),
       battery:     n(26),
     } as SensorRow;
-  });
-}
-
-/** Fix BLE batching: when dt=0, use 0.01s */
-export function fixTimestamps(rows: SensorRow[]): SensorRow[] {
-  return rows.map((row, i) => {
-    if (i === 0) return row;
-    const dt = row.time - rows[i - 1].time;
-    if (dt === 0) return { ...row, time: rows[i - 1].time + 0.01 };
-    return row;
   });
 }
 

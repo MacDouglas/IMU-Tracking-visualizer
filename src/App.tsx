@@ -23,7 +23,7 @@ import TipComparison from './components/panels/TipComparison';
 import TipTrailDtw3D from './components/panels/TipTrailDtw3D';
 import RollRibbonsDtw3D from './components/panels/RollRibbonsDtw3D';
 import OrientationDtw3D from './components/panels/OrientationDtw3D';
-import { parseTSV, fixTimestamps } from './utils/tsvParser';
+import { parseTSV } from './utils/tsvParser';
 import { runDtwPipeline } from './utils/dtwPipeline';
 import type { DtwComparisonData } from './types/dtw';
 import type { ReactNode } from 'react';
@@ -398,8 +398,7 @@ function Dashboard() {
   const { rows, setRows, vizData, activeTab, currentIndex, setCurrentIndex } = useData();
 
   const handleData = (raw: string) => {
-    const parsed = fixTimestamps(parseTSV(raw));
-    setRows(parsed);
+    setRows(parseTSV(raw));
   };
 
   return (

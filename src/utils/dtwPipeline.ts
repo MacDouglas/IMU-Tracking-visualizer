@@ -4,7 +4,7 @@
 // Returns DtwComparisonData ready for all 7 v4 panels.
 
 import type { DtwComparisonData, RecordingSummary } from '../types/dtw';
-import { parseTSV, fixTimestamps } from './tsvParser';
+import { parseTSV } from './tsvParser';
 import { computeTipPosition } from './signalProcessing';
 import { computeDtw2D } from './dtwAlgorithm';
 
@@ -13,7 +13,7 @@ function buildSummary(
   label: string,
   targetPoints: number = 150
 ): RecordingSummary {
-  const rows = fixTimestamps(parseTSV(tsvContent));
+  const rows = parseTSV(tsvContent);
   const N = rows.length;
   const step = Math.max(1, Math.floor(N / targetPoints));
 

@@ -6,6 +6,7 @@ import {
 } from 'recharts';
 import { useData } from '../../DataContext/context';
 import type { SensorRow } from '../../../utils/tsvParser';
+import { DT } from '../../../utils/imuProcessing';
 
 const EMPTY_STATE = (
   <div style={{
@@ -29,7 +30,7 @@ function computePSD(rows: SensorRow[]): { freq: number; psd: number }[] {
   if (rows.length < WIN_SIZE) return [];
 
   const N = rows.length;
-  const fs = N / (rows[N - 1].time - rows[0].time || 1);
+  const fs = 1 / DT;
   const freqRes = fs / WIN_SIZE;
   const maxBin = Math.min(Math.floor(MAX_HZ / freqRes), WIN_SIZE / 2);
 
