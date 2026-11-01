@@ -22,6 +22,14 @@ test('медленное движение + тремор 9 Гц: глобаль�
   const p = welchPsd(x);
   expect(peak(p).freq).toBeLessThan(TREMOR_BAND_MIN_HZ);
   expect(Math.abs(peakInBand(p)!.freq - 9)).toBeLessThan(0.4);
+  expect(peakInBand(p)!.atEdge).toBe(false);
+});
+
+test('спадающий спектр без тремора: максимум на краю полосы → atEdge', () => {
+  const psd = Array.from({ length: 52 }, (_, i) => ({ freq: Math.round(i * 0.39 * 10) / 10, psd: 30 - i }));
+  const p = peakInBand(psd)!;
+  expect(p.freq).toBeGreaterThanOrEqual(2);
+  expect(p.atEdge).toBe(true);
 });
 
 test('peakInBand: пусто → null', () => {

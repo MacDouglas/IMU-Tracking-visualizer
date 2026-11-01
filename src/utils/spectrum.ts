@@ -17,18 +17,19 @@ export const TREMOR_BAND_MIN_HZ = 2;
 /**
  * Highest PSD point with freq in [minHz, maxHz]. The global maximum is almost always
  * at 0 Hz (slow voluntary motion), which says nothing about tremor.
+ * `atEdge` = the maximum is the first or last bin of the band, i.e. the spectrum just
+ * falls (or rises) across the band and has no local peak — no periodic tremor.
  */
 export function peakInBand(
   psd: { freq: number; psd: number }[],
   minHz = TREMOR_BAND_MIN_HZ,
   maxHz = MAX_HZ,
-): { freq: number; psd: number } | null {
-  let best: { freq: number; psd: number } | null = null;
-  for (const p of psd) {
-    if (p.freq < minHz || p.freq > maxHz) continue;
-    if (!best || p.psd > best.psd) best = p;
-  }
-  return best;
+): { freq: number; psd: number; atEdge: boolean } | null {
+  const band = psd.filter(p => p.freq >= minHz && p.freq <= maxHz);
+  if (band.length === 0) return null;
+  let k = 0;
+  for (let i = 1; i < band.length; i++) if (band[i].psd > band[k].psd) k = i;
+  return { ...band[k], atEdge: k === 0 || k === band.length - 1 };
 }
 
 /**

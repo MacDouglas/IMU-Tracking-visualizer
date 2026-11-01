@@ -64,7 +64,10 @@ function Chart({ rows, stationary }: { rows: SensorRow[]; stationary: Uint8Array
         AsX, Welch {WELCH_WIN}
         {peakPt && (
           <span style={{ marginLeft: 10 }}>
-            Пик {TREMOR_BAND_MIN_HZ}–20 Гц: <span style={{ color: '#534AB7', fontWeight: 600 }}>{peakPt.freq} Гц</span>
+            Пик {TREMOR_BAND_MIN_HZ}–20 Гц:{' '}
+            {peakPt.atEdge
+              ? <span style={{ color: '#888', fontWeight: 600 }} title="Спектр монотонно спадает по полосе: периодического тремора нет">нет выраженного</span>
+              : <span style={{ color: '#534AB7', fontWeight: 600 }}>{peakPt.freq} Гц</span>}
             <span style={{ color: '#aaa', marginLeft: 8 }}>тремор 8–12 Гц</span>
           </span>
         )}
@@ -110,7 +113,9 @@ function Chart({ rows, stationary }: { rows: SensorRow[]; stationary: Uint8Array
               <ReferenceArea x1={8} x2={12} fill="#534AB7" fillOpacity={0.06} />
               <ReferenceLine x={8} stroke="#534AB7" strokeDasharray="4 3" strokeOpacity={0.4} />
               <ReferenceLine x={12} stroke="#534AB7" strokeDasharray="4 3" strokeOpacity={0.4} />
-              <ReferenceLine x={peakPt.freq} stroke="#D85A30" strokeDasharray="4 3" strokeOpacity={0.6} />
+              {!peakPt.atEdge && (
+                <ReferenceLine x={peakPt.freq} stroke="#D85A30" strokeDasharray="4 3" strokeOpacity={0.6} />
+              )}
               <Line
                 dataKey="psd"
                 stroke="#534AB7"
