@@ -1,5 +1,5 @@
 import type { SensorRow } from './tsvParser';
-import { DT } from './imuProcessing';
+import { DT, derivativeDt, type SessionExtras, type Trajectory } from './imuProcessing';
 import type { ImuRecording, ImuDerived, ImuVisualizationData } from '../types/imu';
 
 /** √(AsX² + AsY² + AsZ²) — gyroscope magnitude °/s */
@@ -51,41 +51,73 @@ export function quaternionToMatrix(
   ];
 }
 
-/** Compute derived arrays (gyroMag, accHoriz, tip positions) from ImuRecording. */
-export function computeDerived(rec: ImuRecording): ImuDerived {
+/**
+ * Remove ±360° jumps (AngleZ wraps at ±180°) so the angle is continuous.
+ * NaN samples are passed through and don't affect the offset.
+ */
+export function unwrapDeg(x: ArrayLike<number>): Float64Array {
+  const out = new Float64Array(x.length);
+  let offset = 0;
+  let prev = NaN;
+  for (let i = 0; i < x.length; i++) {
+    const v = x[i];
+    if (Number.isFinite(v) && Number.isFinite(prev)) {
+      const d = v - prev;
+      if (d > 180) offset -= 360;
+      else if (d < -180) offset += 360;
+    }
+    if (Number.isFinite(v)) prev = v;
+    out[i] = v + offset;
+  }
+  return out;
+}
+
+/** Compute derived arrays at full rate: gyroMag, accHoriz, tip (from R), angle rates. */
+export function computeDerived(rec: ImuRecording, extras: SessionExtras): ImuDerived {
   const N = rec.length;
   const gyroMag = new Array<number>(N);
   const accHoriz = new Array<number>(N);
-  const tipX = new Array<number>(N);
-  const tipY = new Array<number>(N);
-  const tipZ = new Array<number>(N);
 
   for (let i = 0; i < N; i++) {
     gyroMag[i] = Math.sqrt(rec.gyroX[i] ** 2 + rec.gyroY[i] ** 2 + rec.gyroZ[i] ** 2);
     accHoriz[i] = Math.sqrt(rec.accX[i] ** 2 + rec.accY[i] ** 2);
-    const [tx, ty, tz] = computeTipPosition(rec.q0[i], rec.q1[i], rec.q2[i], rec.q3[i]);
-    tipX[i] = tx;
-    tipY[i] = ty;
-    tipZ[i] = tz;
   }
 
-  return { gyroMag, accHoriz, tipX, tipY, tipZ };
+  const rate = (angle: number[]) => Array.from(derivativeDt(unwrapDeg(angle)));
+
+  return {
+    gyroMag,
+    accHoriz,
+    tipX: Array.from(extras.tip.x),
+    tipY: Array.from(extras.tip.y),
+    tipZ: Array.from(extras.tip.z),
+    rateX: rate(rec.angleX),
+    rateY: rate(rec.angleY),
+    rateZ: rate(rec.angleZ),
+  };
 }
 
-/** Downsample ImuRecording + ImuDerived to targetPoints for rendering. */
-function downsampleColumnar(
-  rec: ImuRecording,
-  derived: ImuDerived,
-  targetPoints: number = 120
-): ImuVisualizationData {
-  const step = Math.max(1, Math.floor(rec.length / targetPoints));
+/** Indices of every step-th sample, at most targetPoints of them. */
+export function downsampleIndices(length: number, targetPoints: number): number[] {
+  const step = Math.max(1, Math.floor(length / targetPoints));
   const indices: number[] = [];
-  for (let i = 0; i < rec.length; i += step) {
+  for (let i = 0; i < length; i += step) {
     indices.push(i);
     if (indices.length >= targetPoints) break;
   }
+  return indices;
+}
 
-  const pick = (arr: number[]) => indices.map(i => arr[i]);
+/** Downsample ImuRecording + ImuDerived + trajectory to targetPoints for rendering. */
+function downsampleColumnar(
+  rec: ImuRecording,
+  derived: ImuDerived,
+  trajectory: Trajectory | null,
+  targetPoints: number = 120
+): ImuVisualizationData {
+  const indices = downsampleIndices(rec.length, targetPoints);
+
+  const pick = (arr: ArrayLike<number>) => indices.map(i => arr[i]);
 
   return {
     recording: {
@@ -104,16 +136,27 @@ function downsampleColumnar(
       tipX: pick(derived.tipX),
       tipY: pick(derived.tipY),
       tipZ: pick(derived.tipZ),
+      rateX: pick(derived.rateX),
+      rateY: pick(derived.rateY),
+      rateZ: pick(derived.rateZ),
+    },
+    trajectory: trajectory && {
+      trajX: pick(trajectory.p[0]), trajY: pick(trajectory.p[1]), trajZ: pick(trajectory.p[2]),
+      rotX: pick(trajectory.rot[0]), rotY: pick(trajectory.rot[1]), rotZ: pick(trajectory.rot[2]),
+      baseX: pick(trajectory.base[0]), baseY: pick(trajectory.base[1]), baseZ: pick(trajectory.base[2]),
+      still: pick(trajectory.stationary),
+      leverM: trajectory.leverM,
     },
     indices,
   };
 }
 
 /**
- * Convert SensorRow[] → ImuVisualizationData (bridge for new 3D panels).
- * Downsamples to targetPoints.
+ * Convert SensorRow[] + SessionExtras → ImuVisualizationData.
+ * All full-rate processing happens before downsampling to targetPoints;
+ * every array is sampled at the same `indices`, so currentIndex matches across panels.
  */
-export function buildVizData(rows: SensorRow[], targetPoints = 120): ImuVisualizationData {
+export function buildVizData(rows: SensorRow[], extras: SessionExtras, targetPoints = 120): ImuVisualizationData {
   const N = rows.length;
   const duration = rows[N - 1].time;
 
@@ -137,6 +180,6 @@ export function buildVizData(rows: SensorRow[], targetPoints = 120): ImuVisualiz
     sampleRate: 1 / DT,
   };
 
-  const derived = computeDerived(rec);
-  return downsampleColumnar(rec, derived, targetPoints);
+  const derived = computeDerived(rec, extras);
+  return downsampleColumnar(rec, derived, extras.trajectory, targetPoints);
 }

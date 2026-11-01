@@ -22,9 +22,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const loadIdRef = useRef(0);
 
   const vizData = useMemo(() => {
-    if (rows.length < 2) return null;
-    return buildVizData(rows, 120);
-  }, [rows]);
+    if (rows.length < 2 || !extras) return null;
+    return buildVizData(rows, extras, 120);
+  }, [rows, extras]);
 
   // Start tremor analysis lazily — only when tremor tab is active
   useEffect(() => {

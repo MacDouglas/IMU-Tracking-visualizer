@@ -32,23 +32,21 @@ function lerpColor(f: number): string {
 }
 
 function Chart({ vizData, axis }: { vizData: ImuVisualizationData; axis: Axis }) {
-  const { recording } = vizData;
+  const { recording, derived } = vizData;
 
   const { points, xDomain, yDomain } = useMemo(() => {
-    const angles = axis === 'X'
-      ? recording.angleX
+    const [angles, rates] = axis === 'X'
+      ? [recording.angleX, derived.rateX]
       : axis === 'Y'
-        ? recording.angleY
-        : recording.angleZ;
-    const t = recording.t;
+        ? [recording.angleY, derived.rateY]
+        : [recording.angleZ, derived.rateZ];
     const N = angles.length;
 
+    // Rates are computed at full 100 Hz before downsampling (signalProcessing.computeDerived)
     const pts: { x: number; y: number; f: number }[] = [];
-    for (let i = 1; i < N; i++) {
-      const dt = t[i] - t[i - 1];
-      if (dt <= 0) continue;
-      const rate = (angles[i] - angles[i - 1]) / dt;
-      if (!isFinite(rate)) continue;
+    for (let i = 0; i < N; i++) {
+      const rate = rates[i];
+      if (!isFinite(rate) || !isFinite(angles[i])) continue;
       pts.push({
         x: Math.round(angles[i] * 10) / 10,
         y: Math.round(rate * 10) / 10,
@@ -69,8 +67,7 @@ function Chart({ vizData, axis }: { vizData: ImuVisualizationData; axis: Axis })
       xDomain: [Math.floor(Math.min(...xs)) - xPad, Math.ceil(Math.max(...xs)) + xPad],
       yDomain: [Math.floor(Math.min(...ys)) - yPad, Math.ceil(Math.max(...ys)) + yPad],
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vizData, axis]);
+  }, [recording, derived, axis]);
 
   const label = AXIS_LABELS[axis];
 
