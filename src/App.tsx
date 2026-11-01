@@ -340,9 +340,11 @@ function ComparisonPanels({ data }: { data: DtwComparisonData }) {
   );
 }
 
+type LoadedFile = { text: string; name: string };
+
 function ComparisonTab() {
-  const [file1, setFile1] = useState<string | null>(null);
-  const [name1, setName1] = useState('');
+  const [rec1, setRec1] = useState<LoadedFile | null>(null);
+  const [rec2, setRec2] = useState<LoadedFile | null>(null);
   const [comparison, setComparison] = useState<DtwComparisonData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -352,30 +354,18 @@ function ComparisonTab() {
 
   useEffect(() => () => workerRef.current?.terminate(), []);
 
-  const cancelPending = () => {
-    requestIdRef.current++;
+  // Recompute whenever either recording changes and both are present
+  const compare = useCallback((a: LoadedFile | null, b: LoadedFile | null) => {
+    const id = ++requestIdRef.current;
     workerRef.current?.terminate();
     workerRef.current = null;
-    setLoading(false);
-  };
-
-  const handleFile1 = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    cancelPending();
-    setName1(f.name);
-    setFile1(await f.text());
     setComparison(null);
     setError(null);
-  }, []);
-
-  const handleFile2 = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f || !file1) return;
-    cancelPending();
-    const id = requestIdRef.current;
+    if (!a || !b) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
-    setError(null);
 
     const worker = new Worker(new URL('./utils/dtwWorker.ts', import.meta.url), { type: 'module' });
     workerRef.current = worker;
@@ -393,9 +383,21 @@ function ComparisonTab() {
     };
     worker.onerror = (ev) => settle({ data: null, error: ev.message || 'Ошибка вычисления DTW' });
 
-    const request: DtwRequest = { id, tsv1: file1, tsv2: await f.text(), label1: name1, label2: f.name };
+    const request: DtwRequest = { id, tsv1: a.text, tsv2: b.text, label1: a.name, label2: b.name };
     worker.postMessage(request);
-  }, [file1, name1]);
+  }, []);
+
+  const handleFile1 = useCallback((text: string, name: string) => {
+    const next = { text, name };
+    setRec1(next);
+    compare(next, rec2);
+  }, [compare, rec2]);
+
+  const handleFile2 = useCallback((text: string, name: string) => {
+    const next = { text, name };
+    setRec2(next);
+    compare(rec1, next);
+  }, [compare, rec1]);
 
   const sep = <div style={{ width: 1, height: 22, background: '#e5e4e7', flexShrink: 0 }} />;
 
@@ -421,28 +423,14 @@ function ComparisonTab() {
         <label style={{ fontSize: 12, color: '#666', whiteSpace: 'nowrap', flexShrink: 0 }}>
           Запись 1:
         </label>
-        <input
-          type="file" accept=".txt,.tsv"
-          onChange={handleFile1}
-          style={{ fontSize: 12, flexShrink: 0, maxWidth: 180 }}
-        />
+        <FileUploader onData={handleFile1} nameMaxWidth={160} />
 
         {sep}
 
-        <label style={{
-          fontSize: 12,
-          color: file1 ? '#666' : '#bbb',
-          whiteSpace: 'nowrap',
-          flexShrink: 0,
-        }}>
+        <label style={{ fontSize: 12, color: '#666', whiteSpace: 'nowrap', flexShrink: 0 }}>
           Запись 2:
         </label>
-        <input
-          type="file" accept=".txt,.tsv"
-          onChange={handleFile2}
-          disabled={!file1}
-          style={{ fontSize: 12, flexShrink: 0, maxWidth: 180 }}
-        />
+        <FileUploader onData={handleFile2} nameMaxWidth={160} />
 
         {loading && (
           <span style={{ fontSize: 12, color: '#888', whiteSpace: 'nowrap', flexShrink: 0 }}>
@@ -494,9 +482,13 @@ function ComparisonTab() {
           <ComparisonPanels data={comparison} />
         ) : (
           <div style={{ padding: 32, color: '#aaa', fontSize: 14 }}>
-            {file1
-              ? 'Теперь загрузите Запись 2'
-              : 'Загрузите два TSV-файла для сравнения траекторий'}
+            {loading || error
+              ? ''
+              : rec1 && !rec2
+                ? 'Теперь загрузите Запись 2'
+                : rec2 && !rec1
+                  ? 'Теперь загрузите Запись 1'
+                  : 'Загрузите два TSV-файла для сравнения траекторий'}
           </div>
         )}
       </VirtualCanvas>
