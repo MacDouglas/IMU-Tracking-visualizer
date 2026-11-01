@@ -21,6 +21,19 @@ describe('unwrapDeg', () => {
   });
 });
 
+describe('downsampleIndices', () => {
+  test.each([
+    [1420, 120], [3244, 120], [3696, 120], [3244, 300], [120, 120], [50, 120], [121, 120], [2, 120],
+  ])('N=%i, target=%i: от 0 до последнего отсчёта, не больше target', (n, target) => {
+    const idx = downsampleIndices(n, target);
+    expect(idx[0]).toBe(0);
+    expect(idx[idx.length - 1]).toBe(n - 1);
+    expect(idx.length).toBeLessThanOrEqual(target);
+    for (let k = 1; k < idx.length; k++) expect(idx[k]).toBeGreaterThan(idx[k - 1]);
+  });
+  test('пустая запись', () => expect(downsampleIndices(0, 120)).toEqual([]));
+});
+
 describe('buildVizData', () => {
   test('квадрат: все массивы по одним индексам, tip из R, траектория', () => {
     const { rows, extras } = session('square_20hz_100hz.txt');

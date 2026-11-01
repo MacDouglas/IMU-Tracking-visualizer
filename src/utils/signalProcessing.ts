@@ -97,13 +97,19 @@ export function computeDerived(rec: ImuRecording, extras: SessionExtras): ImuDer
   };
 }
 
-/** Indices of every step-th sample, at most targetPoints of them. */
+/**
+ * Indices of every step-th sample spanning the whole recording, at most targetPoints of them.
+ * step = ceil(length / targetPoints) so the tail isn't cut off; the last sample is always included.
+ */
 export function downsampleIndices(length: number, targetPoints: number): number[] {
-  const step = Math.max(1, Math.floor(length / targetPoints));
+  if (length <= 0) return [];
+  const step = Math.max(1, Math.ceil(length / targetPoints));
   const indices: number[] = [];
-  for (let i = 0; i < length; i += step) {
-    indices.push(i);
-    if (indices.length >= targetPoints) break;
+  for (let i = 0; i < length; i += step) indices.push(i);
+  const last = length - 1;
+  if (indices[indices.length - 1] !== last) {
+    if (indices.length < targetPoints) indices.push(last);
+    else indices[indices.length - 1] = last;
   }
   return indices;
 }

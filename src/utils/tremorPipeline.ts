@@ -11,6 +11,7 @@
 // Output: TremorAnalysis with voluntary, tremor, frequency, amplitude, spectrogram
 
 import FFT from 'fft.js';
+import { downsampleIndices } from './signalProcessing';
 
 import {
   type TremorAnalysis,
@@ -324,13 +325,7 @@ export function downsampleTremor(
   analysis: TremorAnalysis,
   targetPoints: number = 300
 ): TremorAnalysis {
-  const N = analysis.t.length;
-  const step = Math.max(1, Math.floor(N / targetPoints));
-  const idx: number[] = [];
-  for (let i = 0; i < N; i += step) {
-    idx.push(i);
-    if (idx.length >= targetPoints) break;
-  }
+  const idx = downsampleIndices(analysis.t.length, targetPoints);
 
   const pick = (arr: number[]) => idx.map(i => arr[i]);
 
