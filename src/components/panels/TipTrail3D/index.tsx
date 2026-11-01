@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Grid, Line } from '@react-three/drei';
 import { useData } from '../../DataContext/context';
-import { downsample } from '../../../utils/tsvParser';
+import { downsampleIndices } from '../../../utils/signalProcessing';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -11,8 +11,8 @@ interface TrailData {
   colors: [number, number, number][];
   floorPoints: [number, number, number][];
   connectorPoints: [number, number, number][];
-  sampledCount: number;
-  step: number;
+  /** Full-resolution row index of each trail point */
+  indices: number[];
 }
 
 // ─── Scene ────────────────────────────────────────────────────────────────────
@@ -80,17 +80,16 @@ function TrailScene({
 // ─── TipTrail3D ───────────────────────────────────────────────────────────────
 
 export default function TipTrail3D() {
-  const { rows } = useData();
+  const { rows, extras } = useData();
   const [frameIndex, setFrameIndex] = useState(0);
 
-  // Precompute all geometry — only reruns when rows changes
+  // Precompute all geometry — only reruns when the session changes
   const trailData = useMemo((): TrailData | null => {
-    if (rows.length < 2) return null;
+    if (rows.length < 2 || !extras) return null;
 
-    const sampled = downsample(rows, 300);
-    const N = sampled.length;
-    const tMax = sampled[N - 1].time;
-    const step = Math.max(1, Math.floor(rows.length / 300));
+    const indices = downsampleIndices(rows.length, 300);
+    const N = indices.length;
+    const tMax = rows[rows.length - 1].time;
 
     const points: [number, number, number][] = [];
     const colors: [number, number, number][] = [];
@@ -98,10 +97,11 @@ export default function TipTrail3D() {
     const connectorPoints: [number, number, number][] = [];
 
     for (let i = 0; i < N; i++) {
-      const r = sampled[i];
-      const tipX = 2 * (r.q1 * r.q3 + r.q0 * r.q2) * 1.8;
-      const tipY = 2 * (r.q2 * r.q3 - r.q0 * r.q1) * 1.8;
-      const z = tMax > 0 ? (r.time / tMax) * 3 - 1.5 : 0;
+      const row = indices[i];
+      // tip = 3rd column of R × 1.8 (Euler angles, 100 Hz) — v5.1
+      const tipX = extras.tip.x[row];
+      const tipY = extras.tip.y[row];
+      const z = tMax > 0 ? (rows[row].time / tMax) * 3 - 1.5 : 0;
 
       const f = N > 1 ? i / (N - 1) : 0;
       const color: [number, number, number] = [0.5 * f, 1 - f, 0.5 * f];
@@ -116,18 +116,16 @@ export default function TipTrail3D() {
       }
     }
 
-    return { points, colors, floorPoints, connectorPoints, sampledCount: N, step };
-  }, [rows]);
+    return { points, colors, floorPoints, connectorPoints, indices };
+  }, [rows, extras]);
 
-  // Map full-resolution frameIndex to sampled marker position
+  // Map full-resolution frameIndex to the last trail point not after it
   const markerPos = useMemo((): [number, number, number] => {
-    if (trailData === null || rows.length === 0) return [0, 0, 0];
-    const sampledIdx = Math.min(
-      Math.floor(frameIndex / trailData.step),
-      trailData.sampledCount - 1,
-    );
-    return trailData.points[sampledIdx] ?? [0, 0, 0];
-  }, [trailData, frameIndex, rows.length]);
+    if (trailData === null) return [0, 0, 0];
+    let k = 0;
+    while (k + 1 < trailData.indices.length && trailData.indices[k + 1] <= frameIndex) k++;
+    return trailData.points[k] ?? [0, 0, 0];
+  }, [trailData, frameIndex]);
 
   const clampedIndex = rows.length > 0 ? Math.min(frameIndex, rows.length - 1) : 0;
   const currentTime = rows.length > 0 ? rows[clampedIndex].time.toFixed(2) : '—';

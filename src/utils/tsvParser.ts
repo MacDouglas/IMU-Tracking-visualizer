@@ -9,7 +9,7 @@ export interface SensorRow {
   hX: number;   hY: number;   hZ: number;        // uT
   trajX: number; trajY: number; trajZ: number;   // mm
   speedX: number; speedY: number; speedZ: number; // mm/s
-  q0: number; q1: number; q2: number; q3: number;
+  q0: number; q1: number; q2: number; q3: number; // ~1.5 Hz, reference only: orientation comes from angles (v5.1)
   temperature: number;
   version: number;
   battery: number;
@@ -43,11 +43,4 @@ export function parseTSV(raw: string): SensorRow[] {
       battery:     n(26),
     } as SensorRow;
   });
-}
-
-/** Downsample to ~targetCount points for visualization */
-export function downsample<T>(arr: T[], targetCount: number): T[] {
-  if (arr.length <= targetCount) return arr;
-  const step = Math.floor(arr.length / targetCount);
-  return arr.filter((_, i) => i % step === 0);
 }

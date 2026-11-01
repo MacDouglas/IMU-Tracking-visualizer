@@ -1,23 +1,5 @@
 // types/imu.ts
 
-/** Raw row from WitMotion TSV file */
-export interface ImuRawRow {
-  time: string;
-  accX: number;
-  accY: number;
-  accZ: number;
-  gyroX: number;
-  gyroY: number;
-  gyroZ: number;
-  angleX: number;
-  angleY: number;
-  angleZ: number;
-  q0: number;
-  q1: number;
-  q2: number;
-  q3: number;
-}
-
 /** Processed IMU recording — all arrays same length */
 export interface ImuRecording {
   /** Relative time in seconds from first sample */
@@ -26,11 +8,6 @@ export interface ImuRecording {
   angleX: number[];
   angleY: number[];
   angleZ: number[];
-  /** Quaternion components (unit quaternion from firmware fusion) */
-  q0: number[];
-  q1: number[];
-  q2: number[];
-  q3: number[];
   /** Gyroscope in °/s */
   gyroX: number[];
   gyroY: number[];

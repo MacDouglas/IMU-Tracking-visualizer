@@ -3,32 +3,30 @@ import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Grid } from '@react-three/drei';
 import * as THREE from 'three';
 import { useData } from '../../DataContext/context';
-import type { SensorRow } from '../../../utils/tsvParser';
+import { quaternionFromR } from '../../../utils/orientation';
 
 // ─── HandModel ────────────────────────────────────────────────────────────────
 
-function HandModel({ row }: { row: SensorRow }) {
-  // WitMotion: q0=w, q1=x, q2=y, q3=z → THREE.Quaternion(x, y, z, w)
-  const quaternion = useMemo(
-    () => new THREE.Quaternion(row.q1, row.q2, row.q3, row.q0).normalize(),
-    [row.q0, row.q1, row.q2, row.q3],
-  );
-
+/**
+ * Hand in sensor axes (Install Direction = Horizontal, sensor on the back of the hand):
+ * X — along the forearm towards the fingers (Roll axis), Y — across the palm, Z — normal to the back of the hand.
+ */
+function HandModel({ quaternion }: { quaternion: THREE.Quaternion }) {
   return (
     <group quaternion={quaternion}>
-      {/* Palm */}
+      {/* Palm: long along X, thin along Z; three.js box args are (x, y, z) in sensor axes before C */}
       <mesh>
-        <boxGeometry args={[1.4, 0.25, 1.0]} />
+        <boxGeometry args={[1.4, 1.0, 0.25]} />
         <meshStandardMaterial color="#5588ff" />
       </mesh>
-      {/* Finger direction — cone pointing +Z */}
-      <mesh position={[0, 0, 0.85]} rotation={[Math.PI / 2, 0, 0]}>
+      {/* Finger direction — cone pointing +X */}
+      <mesh position={[0.85, 0, 0]} rotation={[0, 0, -Math.PI / 2]}>
         <coneGeometry args={[0.16, 0.65, 8]} />
         <meshStandardMaterial color="#ff8844" />
       </mesh>
-      {/* Wrist nub — marks −Z end */}
-      <mesh position={[0, 0, -0.65]}>
-        <boxGeometry args={[0.5, 0.3, 0.28]} />
+      {/* Wrist nub — marks −X end */}
+      <mesh position={[-0.65, 0, 0]}>
+        <boxGeometry args={[0.28, 0.5, 0.3]} />
         <meshStandardMaterial color="#3366dd" />
       </mesh>
     </group>
@@ -37,7 +35,7 @@ function HandModel({ row }: { row: SensorRow }) {
 
 // ─── Scene ────────────────────────────────────────────────────────────────────
 
-function Scene({ row }: { row: SensorRow | null }) {
+function Scene({ quaternion }: { quaternion: THREE.Quaternion | null }) {
   return (
     <>
       <ambientLight intensity={0.6} />
@@ -56,7 +54,7 @@ function Scene({ row }: { row: SensorRow | null }) {
         infiniteGrid
       />
       <OrbitControls enableDamping dampingFactor={0.08} />
-      {row !== null && <HandModel row={row} />}
+      {quaternion !== null && <HandModel quaternion={quaternion} />}
     </>
   );
 }
@@ -64,17 +62,20 @@ function Scene({ row }: { row: SensorRow | null }) {
 // ─── OrientationModel ─────────────────────────────────────────────────────────
 
 export default function OrientationModel() {
-  const { rows } = useData();
+  const { rows, extras } = useData();
   const [frameIndex, setFrameIndex] = useState(0);
 
   const clampedIndex = rows.length > 0 ? Math.min(frameIndex, rows.length - 1) : 0;
-  const currentRow = rows.length > 0 ? rows[clampedIndex] : null;
-  const currentTime = currentRow?.time.toFixed(2) ?? '—';
+  const currentTime = rows.length > 0 ? rows[clampedIndex].time.toFixed(2) : '—';
+  const quaternion = useMemo(
+    () => (extras && rows.length > 0 ? quaternionFromR(extras.R, clampedIndex) : null),
+    [extras, rows.length, clampedIndex],
+  );
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', background: '#1a1a2e' }}>
       <Canvas camera={{ position: [3, 2.5, 3.5], fov: 45 }} style={{ width: '100%', height: '100%' }}>
-        <Scene row={currentRow} />
+        <Scene quaternion={quaternion} />
       </Canvas>
 
       {rows.length === 0 && (
