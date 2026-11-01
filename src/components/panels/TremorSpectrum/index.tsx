@@ -1,4 +1,3 @@
-// @ts-expect-error — fft.js has no bundled TypeScript types
 import FFT from 'fft.js';
 import { useMemo } from 'react';
 import {
