@@ -11,6 +11,26 @@ function hann(i: number, N: number): number {
   return 0.5 * (1 - Math.cos((2 * Math.PI * i) / (N - 1)));
 }
 
+/** Lower edge of the tremor band: below it is voluntary motion (same split as CDF/WFLC, 2 Hz) */
+export const TREMOR_BAND_MIN_HZ = 2;
+
+/**
+ * Highest PSD point with freq in [minHz, maxHz]. The global maximum is almost always
+ * at 0 Hz (slow voluntary motion), which says nothing about tremor.
+ */
+export function peakInBand(
+  psd: { freq: number; psd: number }[],
+  minHz = TREMOR_BAND_MIN_HZ,
+  maxHz = MAX_HZ,
+): { freq: number; psd: number } | null {
+  let best: { freq: number; psd: number } | null = null;
+  for (const p of psd) {
+    if (p.freq < minHz || p.freq > maxHz) continue;
+    if (!best || p.psd > best.psd) best = p;
+  }
+  return best;
+}
+
 /**
  * Welch PSD in dB: Hann window 256, hop 128, fs = 100 Hz, 0–20 Hz.
  * Returns [] when the signal is shorter than one window.

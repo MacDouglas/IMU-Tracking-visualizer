@@ -6,7 +6,7 @@ import {
 import { useData } from '../../DataContext/context';
 import type { SensorRow } from '../../../utils/tsvParser';
 import { DT, motionSpan } from '../../../utils/imuProcessing';
-import { welchPsd, WELCH_WIN } from '../../../utils/spectrum';
+import { welchPsd, peakInBand, WELCH_WIN, TREMOR_BAND_MIN_HZ } from '../../../utils/spectrum';
 
 const EMPTY_STATE = (
   <div style={{
@@ -47,7 +47,7 @@ function Chart({ rows, stationary }: { rows: SensorRow[]; stationary: Uint8Array
     marginLeft: 4,
   });
 
-  const peakPt = data.length ? data.reduce((a, b) => (b.psd > a.psd ? b : a), data[0]) : null;
+  const peakPt = peakInBand(data);
   const motionLabel = motion ? `${(motion[0] * DT).toFixed(1)}–${(motion[1] * DT).toFixed(1)} с` : '';
 
   return (
@@ -64,7 +64,7 @@ function Chart({ rows, stationary }: { rows: SensorRow[]; stationary: Uint8Array
         AsX, Welch {WELCH_WIN}
         {peakPt && (
           <span style={{ marginLeft: 10 }}>
-            Пик: <span style={{ color: '#534AB7', fontWeight: 600 }}>{peakPt.freq} Гц</span>
+            Пик {TREMOR_BAND_MIN_HZ}–20 Гц: <span style={{ color: '#534AB7', fontWeight: 600 }}>{peakPt.freq} Гц</span>
             <span style={{ color: '#aaa', marginLeft: 8 }}>тремор 8–12 Гц</span>
           </span>
         )}
@@ -104,6 +104,8 @@ function Chart({ rows, stationary }: { rows: SensorRow[]; stationary: Uint8Array
                 formatter={(v: unknown) => [`${v} дБ`, 'Мощность']}
                 labelFormatter={(l) => `${l} Гц`}
               />
+              {/* Voluntary motion < 2 Hz — excluded from the peak search */}
+              <ReferenceArea x1={0} x2={TREMOR_BAND_MIN_HZ} fill="#9a9a9a" fillOpacity={0.1} />
               {/* Physiological tremor band 8–12 Hz */}
               <ReferenceArea x1={8} x2={12} fill="#534AB7" fillOpacity={0.06} />
               <ReferenceLine x={8} stroke="#534AB7" strokeDasharray="4 3" strokeOpacity={0.4} />

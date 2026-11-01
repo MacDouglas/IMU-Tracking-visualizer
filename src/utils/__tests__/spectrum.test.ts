@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from 'vitest';
-import { welchPsd, WELCH_WIN } from '../spectrum';
+import { welchPsd, peakInBand, WELCH_WIN, TREMOR_BAND_MIN_HZ } from '../spectrum';
 import { DT, motionSpan } from '../imuProcessing';
 import { loadSession } from '../sessionLoader';
 import { buildVizData } from '../signalProcessing';
@@ -12,6 +12,20 @@ test('синус 10 Гц → пик у 10 Гц (разрешение 0,39 Гц)'
   const p = welchPsd(x);
   expect(Math.abs(peak(p).freq - 10)).toBeLessThan(0.4);
   expect(p[p.length - 1].freq).toBeLessThanOrEqual(20);
+});
+
+test('медленное движение + тремор 9 Гц: глобальный максимум у 0 Гц, peakInBand находит 9 Гц', () => {
+  const x = Array.from({ length: 2000 }, (_, i) => {
+    const t = i * DT;
+    return 80 * Math.sin(2 * Math.PI * 0.3 * t) + 2 * Math.sin(2 * Math.PI * 9 * t);
+  });
+  const p = welchPsd(x);
+  expect(peak(p).freq).toBeLessThan(TREMOR_BAND_MIN_HZ);
+  expect(Math.abs(peakInBand(p)!.freq - 9)).toBeLessThan(0.4);
+});
+
+test('peakInBand: пусто → null', () => {
+  expect(peakInBand([])).toBeNull();
 });
 
 test('короче одного окна → пусто', () => {
